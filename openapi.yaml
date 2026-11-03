@@ -1,0 +1,694 @@
+openapi: 3.0.3
+info:
+  title: RevisaTEC - MS2 Rúbrica IA y reportes
+  version: 0.1.0
+  description: 'Rúbrica, indicaciones, análisis, retroalimentación, inconvenientes y reportes.
+
+    Python / FastAPI + Cosmos DB (API Mongo). Publica eventos en Azure Queue Storage.
+
+    Todo el tráfico entra por APIM. Fechas en Epoch (milisegundos, UTC). Errores: { "error": "mensaje"
+    }.
+
+    Los esquemas replican lo que el front de la Fase I consume de los mocks. progress-summary y criteria
+
+    no los consume el front hoy (x-validar).
+
+    '
+servers:
+- url: https://apimanagementcristopherarayavega.azure-api.net/revisatec
+  description: APIM (único punto de entrada)
+security:
+- subscriptionKey: []
+tags:
+- name: Health
+- name: Course configuration
+- name: Group analysis
+- name: Feedback
+- name: Reports
+paths:
+  /health:
+    get:
+      tags:
+      - Health
+      summary: Estado del servicio
+      operationId: ms2Health
+      responses:
+        '200':
+          description: Servicio activo
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: UP
+                  service:
+                    type: string
+                    example: ms-analysis
+  /courses/{id}/rubric:
+    parameters:
+    - $ref: '#/components/parameters/id'
+    get:
+      tags:
+      - Course configuration
+      summary: Obtener rúbrica del curso
+      operationId: getRubric
+      responses:
+        '200':
+          description: Rúbrica
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Rubric'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      tags:
+      - Course configuration
+      summary: Reemplazar rúbrica del curso
+      operationId: updateRubric
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Rubric'
+      responses:
+        '200':
+          description: Rúbrica actualizada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Rubric'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /courses/{id}/instructions:
+    parameters:
+    - $ref: '#/components/parameters/id'
+    get:
+      tags:
+      - Course configuration
+      summary: Obtener indicaciones para la IA
+      operationId: getInstructions
+      responses:
+        '200':
+          description: Indicaciones
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Instructions'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      tags:
+      - Course configuration
+      summary: Actualizar indicaciones para la IA
+      operationId: updateInstructions
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Instructions'
+      responses:
+        '200':
+          description: Indicaciones actualizadas
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Instructions'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /courses/{id}/scraping-config:
+    parameters:
+    - $ref: '#/components/parameters/id'
+    get:
+      tags:
+      - Course configuration
+      summary: Obtener configuración de qué considerar del repositorio
+      operationId: getScrapingConfig
+      responses:
+        '200':
+          description: Configuración
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScrapingConfig'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      tags:
+      - Course configuration
+      summary: Actualizar configuración de scraping
+      operationId: updateScrapingConfig
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ScrapingConfig'
+      responses:
+        '200':
+          description: Configuración actualizada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScrapingConfig'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /groups/{id}/analysis:
+    parameters:
+    - $ref: '#/components/parameters/id'
+    get:
+      tags:
+      - Group analysis
+      summary: Puntaje y evidencia del grupo
+      operationId: getGroupAnalysis
+      responses:
+        '200':
+          description: Análisis
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Analysis'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /groups/{id}/progress-summary:
+    parameters:
+    - $ref: '#/components/parameters/id'
+    get:
+      tags:
+      - Group analysis
+      summary: Estado del avance por criterio
+      operationId: getProgressSummary
+      responses:
+        '200':
+          description: Síntesis de avance
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProgressSummary'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /groups/{id}/criteria:
+    parameters:
+    - $ref: '#/components/parameters/id'
+    get:
+      tags:
+      - Group analysis
+      summary: Nivel de cumplimiento por criterio
+      operationId: getGroupCriteria
+      responses:
+        '200':
+          description: Cumplimiento por criterio
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  groupId:
+                    type: integer
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/CriterionCompliance'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /groups/{id}/feedback:
+    parameters:
+    - $ref: '#/components/parameters/id'
+    get:
+      tags:
+      - Feedback
+      summary: Obtener retroalimentación (versión IA y versión del profesor)
+      operationId: getFeedback
+      responses:
+        '200':
+          description: Retroalimentación
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Feedback'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      tags:
+      - Feedback
+      summary: Guardar la versión editada por el profesor
+      operationId: updateFeedback
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FeedbackInput'
+      responses:
+        '200':
+          description: Retroalimentación actualizada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Feedback'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /groups/{id}/feedback/publish:
+    parameters:
+    - $ref: '#/components/parameters/id'
+    post:
+      tags:
+      - Feedback
+      summary: Publicar la retroalimentación al estudiante
+      description: 'Marca la retroalimentación como publicada y emite el mensaje
+
+        FEEDBACK_PUBLISHED a la cola (ver queue-message.schema.json).
+
+        '
+      operationId: publishFeedback
+      responses:
+        '200':
+          description: Retroalimentación publicada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Feedback'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /groups/{id}/direct-reviews:
+    parameters:
+    - $ref: '#/components/parameters/id'
+    get:
+      tags:
+      - Feedback
+      summary: Listar revisiones directas del grupo (paginado)
+      operationId: listDirectReviews
+      parameters:
+      - $ref: '#/components/parameters/page'
+      - $ref: '#/components/parameters/pageSize'
+      responses:
+        '200':
+          description: Lista paginada de revisiones directas
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/PageMeta'
+                - type: object
+                  properties:
+                    items:
+                      type: array
+                      items:
+                        $ref: '#/components/schemas/DirectReview'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    post:
+      tags:
+      - Feedback
+      summary: Crear revisión directa fuera del flujo normal
+      operationId: createDirectReview
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DirectReviewInput'
+      responses:
+        '201':
+          description: Revisión creada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DirectReview'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /groups/{id}/issues:
+    parameters:
+    - $ref: '#/components/parameters/id'
+    get:
+      tags:
+      - Group analysis
+      summary: Inconvenientes detectados (paginado)
+      description: Puede emitir el mensaje ISSUE_DETECTED a la cola cuando detecta uno nuevo.
+      operationId: listGroupIssues
+      parameters:
+      - $ref: '#/components/parameters/page'
+      - $ref: '#/components/parameters/pageSize'
+      responses:
+        '200':
+          description: Lista paginada de inconvenientes
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/PageMeta'
+                - type: object
+                  properties:
+                    items:
+                      type: array
+                      items:
+                        $ref: '#/components/schemas/Issue'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /groups/{id}/report:
+    parameters:
+    - $ref: '#/components/parameters/id'
+    get:
+      tags:
+      - Reports
+      summary: Reporte del grupo
+      operationId: getGroupReport
+      responses:
+        '200':
+          description: Reporte
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Report'
+        '404':
+          $ref: '#/components/responses/NotFound'
+components:
+  securitySchemes:
+    subscriptionKey:
+      type: apiKey
+      in: header
+      name: Ocp-Apim-Subscription-Key
+  parameters:
+    id:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+    page:
+      name: page
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+    pageSize:
+      name: pageSize
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 10
+  responses:
+    BadRequest:
+      description: Solicitud inválida
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFound:
+      description: Recurso no encontrado
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+  schemas:
+    Error:
+      type: object
+      required:
+      - error
+      properties:
+        error:
+          type: string
+    PageMeta:
+      type: object
+      required:
+      - totalRecords
+      - page
+      - pageSize
+      - items
+      properties:
+        totalRecords:
+          type: integer
+        page:
+          type: integer
+        pageSize:
+          type: integer
+    Rubric:
+      type: object
+      required:
+      - criteria
+      properties:
+        criteria:
+          type: array
+          items:
+            type: object
+            required:
+            - name
+            - weight
+            properties:
+              name:
+                type: string
+                example: Calidad de commits
+              weight:
+                type: number
+                example: 20
+        fileName:
+          type: string
+          description: Archivo de rúbrica interpretado (solo lectura)
+        interpretationStatus:
+          type: string
+          description: Texto del estado de interpretación por IA (solo lectura)
+    Instructions:
+      type: object
+      required:
+      - text
+      properties:
+        courseId:
+          type: integer
+        text:
+          type: string
+          description: Indicaciones para la IA
+        updatedAt:
+          type: integer
+          format: int64
+          description: Epoch ms
+    ScrapingConfig:
+      type: object
+      required:
+      - frequency
+      - minReviewers
+      properties:
+        frequency:
+          type: string
+          enum:
+          - hourly
+          - daily
+          - weekly
+        minReviewers:
+          type: integer
+          minimum: 1
+          example: 2
+        nextRunAt:
+          type: integer
+          format: int64
+          description: Próximo análisis (solo lectura). Epoch ms
+    Evidence:
+      type: object
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+          enum:
+          - pr
+          - commit
+        text:
+          type: string
+        author:
+          type: string
+        reviewer:
+          type: string
+          nullable: true
+        when:
+          type: integer
+          format: int64
+          description: Epoch ms
+    Analysis:
+      type: object
+      properties:
+        score:
+          type: number
+          example: 85
+        progress:
+          type: integer
+          example: 71
+        criteria:
+          type: array
+          items:
+            $ref: '#/components/schemas/CriterionScore'
+        evidence:
+          type: array
+          items:
+            $ref: '#/components/schemas/Evidence'
+      x-note: criteria usa name/score/max/percent/level/type como el front
+    CriterionCompliance:
+      type: object
+      properties:
+        criterionId:
+          type: string
+        name:
+          type: string
+        level:
+          type: string
+          enum:
+          - not_met
+          - partial
+          - met
+        score:
+          type: number
+      x-validar: no lo consume el front de la Fase I
+    ProgressSummary:
+      type: object
+      properties:
+        groupId:
+          type: integer
+        overall:
+          type: integer
+          minimum: 0
+          maximum: 100
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              criterionId:
+                type: string
+              status:
+                type: string
+                enum:
+                - on_track
+                - at_risk
+                - delayed
+              note:
+                type: string
+        generatedAt:
+          type: integer
+          format: int64
+          description: Epoch ms
+      x-validar: no lo consume el front de la Fase I
+    Feedback:
+      type: object
+      properties:
+        groupName:
+          type: string
+        deliveryTitle:
+          type: string
+          example: 'Entrega 2: Prototipo'
+        score:
+          type: number
+        ai:
+          type: string
+          description: Propuesta de la IA
+        professor:
+          type: string
+          description: Versión editable del profesor
+        status:
+          type: string
+          enum:
+          - draft
+          - published
+    DirectReviewInput:
+      type: object
+      required:
+      - note
+      properties:
+        note:
+          type: string
+    DirectReview:
+      allOf:
+      - $ref: '#/components/schemas/DirectReviewInput'
+      - type: object
+        properties:
+          id:
+            type: string
+          date:
+            type: integer
+            format: int64
+            description: Epoch ms
+    Issue:
+      type: object
+      properties:
+        id:
+          type: integer
+        groupId:
+          type: integer
+        groupName:
+          type: string
+        type:
+          type: string
+          example: Commits de prueba
+        description:
+          type: string
+        date:
+          type: integer
+          format: int64
+          description: Detectado. Epoch ms
+        status:
+          type: string
+          enum:
+          - Sin resolver
+          - Resuelto
+    Report:
+      type: object
+      properties:
+        checklist:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              date:
+                type: integer
+                format: int64
+                description: Epoch ms
+              status:
+                type: string
+                enum:
+                - completado
+                - pendiente
+    CriterionScore:
+      type: object
+      properties:
+        name:
+          type: string
+        score:
+          type: number
+        max:
+          type: number
+        percent:
+          type: integer
+        level:
+          type: string
+          example: Excelente
+        type:
+          type: string
+          enum:
+          - success
+          - warning
+          - alert
+    FeedbackInput:
+      type: object
+      required:
+      - professor
+      properties:
+        ai:
+          type: string
+        professor:
+          type: string
