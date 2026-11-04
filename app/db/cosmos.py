@@ -10,16 +10,13 @@ logger = logging.getLogger(__name__)
 _mongo_client: Optional[MongoClient] = None
 _database_override: Optional[Database] = None
 
-# Collection names as defined in specification
-RUBRICS_COLLECTION = "rubrics"
-INSTRUCTIONS_COLLECTION = "instructions"
-SCRAPING_CONFIGS_COLLECTION = "scraping_configs"
-ANALYSES_COLLECTION = "analyses"
-FEEDBACKS_COLLECTION = "feedbacks"
+# Exact collection names according to docs/cosmos-model.md
+COURSE_SETTINGS_COLLECTION = "course_settings"
+GITHUB_EVENTS_COLLECTION = "github_events"
+FEEDBACK_COLLECTION = "feedback"
 ISSUES_COLLECTION = "issues"
 DIRECT_REVIEWS_COLLECTION = "direct_reviews"
-REPORTS_COLLECTION = "reports"
-MEMBERS_COLLECTION = "members"
+REPORT_CHECKLIST_COLLECTION = "report_checklist"
 
 
 def get_client() -> MongoClient:
@@ -49,6 +46,61 @@ def set_database(db: Optional[Database]) -> None:
     """Override the database instance (e.g. for testing with mongomock)."""
     global _database_override
     _database_override = db
+    if db is not None:
+        init_indexes(db)
+
+
+def init_indexes(db: Optional[Database] = None) -> None:
+    """Create indexes according to docs/cosmos-model.md idempotently."""
+    if db is None:
+        try:
+            db = get_database()
+        except Exception as e:
+            logger.warning(f"Could not get database to initialize indexes: {e}")
+            return
+
+    try:
+        # course_settings: courseId (único)
+        db[COURSE_SETTINGS_COLLECTION].create_index("courseId", unique=True)
+    except Exception as e:
+        logger.warning(f"Index course_settings.courseId already exists or skipped: {e}")
+
+    try:
+        # github_events: groupId, createdAt
+        db[GITHUB_EVENTS_COLLECTION].create_index("groupId")
+        db[GITHUB_EVENTS_COLLECTION].create_index("createdAt")
+        db[GITHUB_EVENTS_COLLECTION].create_index([("groupId", 1), ("createdAt", 1)])
+    except Exception as e:
+        logger.warning(f"Index github_events already exists or skipped: {e}")
+
+    try:
+        # feedback: groupId (único)
+        db[FEEDBACK_COLLECTION].create_index("groupId", unique=True)
+    except Exception as e:
+        logger.warning(f"Index feedback.groupId already exists or skipped: {e}")
+
+    try:
+        # issues: groupId, date, sourceEventId
+        db[ISSUES_COLLECTION].create_index("groupId")
+        db[ISSUES_COLLECTION].create_index("date")
+        db[ISSUES_COLLECTION].create_index("sourceEventId")
+        db[ISSUES_COLLECTION].create_index([("groupId", 1), ("date", 1), ("sourceEventId", 1)])
+    except Exception as e:
+        logger.warning(f"Index issues already exists or skipped: {e}")
+
+    try:
+        # direct_reviews: groupId, date
+        db[DIRECT_REVIEWS_COLLECTION].create_index("groupId")
+        db[DIRECT_REVIEWS_COLLECTION].create_index("date")
+        db[DIRECT_REVIEWS_COLLECTION].create_index([("groupId", 1), ("date", 1)])
+    except Exception as e:
+        logger.warning(f"Index direct_reviews already exists or skipped: {e}")
+
+    try:
+        # report_checklist: groupId
+        db[REPORT_CHECKLIST_COLLECTION].create_index("groupId")
+    except Exception as e:
+        logger.warning(f"Index report_checklist.groupId already exists or skipped: {e}")
 
 
 def close_client() -> None:

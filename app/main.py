@@ -6,13 +6,23 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from app.db.cosmos import close_client
-from app.routers import health
+from app.db.cosmos import close_client, init_indexes
+from app.routers import (
+    health,
+    course_settings,
+    group_analysis,
+    feedback,
+    report,
+)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup logic
+    try:
+        init_indexes()
+    except Exception:
+        pass
     yield
     # Shutdown logic
     close_client()
@@ -68,3 +78,7 @@ async def starlette_http_exception_handler(request: Request, exc: StarletteHTTPE
 
 # Routers
 app.include_router(health.router)
+app.include_router(course_settings.router)
+app.include_router(group_analysis.router)
+app.include_router(feedback.router)
+app.include_router(report.router)

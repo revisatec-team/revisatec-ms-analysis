@@ -1,7 +1,7 @@
 """Tests for /health, Cosmos connection, and global error handlers."""
 import time
 from fastapi.testclient import TestClient
-from app.db.cosmos import get_database, RUBRICS_COLLECTION
+from app.db.cosmos import get_database, COURSE_SETTINGS_COLLECTION
 
 
 def test_health_success(client: TestClient):
@@ -52,7 +52,7 @@ def test_cosmos_db_injection(mock_db):
     """Test that Cosmos DB mock client works and can read/write."""
     db = get_database()
     assert db is not None
-    db[RUBRICS_COLLECTION].insert_one({"courseId": 1, "test": True})
-    doc = db[RUBRICS_COLLECTION].find_one({"courseId": 1})
+    db[COURSE_SETTINGS_COLLECTION].insert_one({"courseId": 1, "test": True})
+    doc = db[COURSE_SETTINGS_COLLECTION].find_one({"courseId": 1})
     assert doc is not None
     assert doc["test"] is True
