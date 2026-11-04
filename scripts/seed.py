@@ -1,5 +1,5 @@
 """Database seed script for RevisaTEC MS2 Analysis.
-Idempotent upsert of course_settings and github_events.
+Idempotent upsert of course_settings, github_events, and report_checklist.
 """
 import time
 from typing import Optional
@@ -9,12 +9,13 @@ from app.db.cosmos import (
     get_database,
     COURSE_SETTINGS_COLLECTION,
     GITHUB_EVENTS_COLLECTION,
+    REPORT_CHECKLIST_COLLECTION,
     init_indexes,
 )
 
 
 def seed_database(db: Optional[Database] = None) -> dict:
-    """Seed course_settings and github_events idempotently."""
+    """Seed course_settings, github_events, and report_checklist idempotently."""
     if db is None:
         db = get_database()
 
@@ -212,13 +213,66 @@ def seed_database(db: Optional[Database] = None) -> dict:
             upsert=True,
         )
 
+    # 3. report_checklist for groups 1, 2, 3
+    checklist_items = [
+        # Group 1
+        {
+            "groupId": 1,
+            "name": "Entrega 1: Especificación y Requisitos",
+            "date": now_ms - (20 * day_ms),
+            "status": "completado",
+        },
+        {
+            "groupId": 1,
+            "name": "Entrega 2: Prototipo",
+            "date": now_ms + (5 * day_ms),
+            "status": "pendiente",
+        },
+        {
+            "groupId": 1,
+            "name": "Entrega 3: Presentación Final",
+            "date": now_ms + (25 * day_ms),
+            "status": "pendiente",
+        },
+        # Group 2
+        {
+            "groupId": 2,
+            "name": "Entrega 1: Especificación y Requisitos",
+            "date": now_ms - (18 * day_ms),
+            "status": "completado",
+        },
+        {
+            "groupId": 2,
+            "name": "Entrega 2: Prototipo",
+            "date": now_ms + (5 * day_ms),
+            "status": "pendiente",
+        },
+        # Group 3
+        {
+            "groupId": 3,
+            "name": "Entrega 1: Especificación y Requisitos",
+            "date": now_ms - (10 * day_ms),
+            "status": "pendiente",
+        },
+    ]
+
+    for item in checklist_items:
+        db[REPORT_CHECKLIST_COLLECTION].update_one(
+            {"groupId": item["groupId"], "name": item["name"]},
+            {"$set": item},
+            upsert=True,
+        )
+
     course_settings_count = db[COURSE_SETTINGS_COLLECTION].count_documents({})
     github_events_count = db[GITHUB_EVENTS_COLLECTION].count_documents({})
+    report_checklist_count = db[REPORT_CHECKLIST_COLLECTION].count_documents({})
 
     return {
         "course_settings_count": course_settings_count,
         "github_events_count": github_events_count,
+        "report_checklist_count": report_checklist_count,
         "total_events": len(events),
+        "total_checklist": len(checklist_items),
     }
 
 

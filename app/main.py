@@ -7,7 +7,13 @@ from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.db.cosmos import close_client, init_indexes
-from app.routers import health, course_settings, group_analysis, feedback
+from app.routers import (
+    health,
+    course_settings,
+    group_analysis,
+    feedback,
+    report,
+)
 
 
 @asynccontextmanager
@@ -75,3 +81,4 @@ app.include_router(health.router)
 app.include_router(course_settings.router)
 app.include_router(group_analysis.router)
 app.include_router(feedback.router)
+app.include_router(report.router)
