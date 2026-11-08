@@ -66,12 +66,20 @@ def init_indexes(db: Optional[Database] = None) -> None:
         logger.warning(f"Index course_settings.courseId already exists or skipped: {e}")
 
     try:
-        # github_events: groupId, createdAt
+        # github_events: groupId, createdAt (simple and compound)
         db[GITHUB_EVENTS_COLLECTION].create_index("groupId")
+    except Exception as e:
+        logger.warning(f"Index github_events.groupId already exists or skipped: {e}")
+
+    try:
         db[GITHUB_EVENTS_COLLECTION].create_index("createdAt")
+    except Exception as e:
+        logger.warning(f"Index github_events.createdAt already exists or skipped: {e}")
+
+    try:
         db[GITHUB_EVENTS_COLLECTION].create_index([("groupId", 1), ("createdAt", 1)])
     except Exception as e:
-        logger.warning(f"Index github_events already exists or skipped: {e}")
+        logger.warning(f"Index github_events compound already exists or skipped: {e}")
 
     try:
         # feedback: groupId (único)
@@ -80,27 +88,52 @@ def init_indexes(db: Optional[Database] = None) -> None:
         logger.warning(f"Index feedback.groupId already exists or skipped: {e}")
 
     try:
-        # issues: groupId, date, sourceEventId
+        # issues: groupId, date, sourceEventId (simple and compound)
         db[ISSUES_COLLECTION].create_index("groupId")
+    except Exception as e:
+        logger.warning(f"Index issues.groupId already exists or skipped: {e}")
+
+    try:
         db[ISSUES_COLLECTION].create_index("date")
+    except Exception as e:
+        logger.warning(f"Index issues.date already exists or skipped: {e}")
+
+    try:
         db[ISSUES_COLLECTION].create_index("sourceEventId")
+    except Exception as e:
+        logger.warning(f"Index issues.sourceEventId already exists or skipped: {e}")
+
+    try:
         db[ISSUES_COLLECTION].create_index([("groupId", 1), ("date", 1), ("sourceEventId", 1)])
     except Exception as e:
-        logger.warning(f"Index issues already exists or skipped: {e}")
+        logger.warning(f"Index issues compound already exists or skipped: {e}")
 
     try:
-        # direct_reviews: groupId, date
+        # direct_reviews: groupId, date (simple and compound)
         db[DIRECT_REVIEWS_COLLECTION].create_index("groupId")
+    except Exception as e:
+        logger.warning(f"Index direct_reviews.groupId already exists or skipped: {e}")
+
+    try:
         db[DIRECT_REVIEWS_COLLECTION].create_index("date")
+    except Exception as e:
+        logger.warning(f"Index direct_reviews.date already exists or skipped: {e}")
+
+    try:
         db[DIRECT_REVIEWS_COLLECTION].create_index([("groupId", 1), ("date", 1)])
     except Exception as e:
-        logger.warning(f"Index direct_reviews already exists or skipped: {e}")
+        logger.warning(f"Index direct_reviews compound already exists or skipped: {e}")
 
     try:
-        # report_checklist: groupId
+        # report_checklist: groupId, date (simple indexes)
         db[REPORT_CHECKLIST_COLLECTION].create_index("groupId")
     except Exception as e:
         logger.warning(f"Index report_checklist.groupId already exists or skipped: {e}")
+
+    try:
+        db[REPORT_CHECKLIST_COLLECTION].create_index("date")
+    except Exception as e:
+        logger.warning(f"Index report_checklist.date already exists or skipped: {e}")
 
 
 def close_client() -> None:

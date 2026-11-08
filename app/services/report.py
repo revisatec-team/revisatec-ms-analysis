@@ -11,20 +11,24 @@ def get_group_report(group_id: int) -> Report:
     get_course_settings_or_404(course_id)
 
     db = get_database()
-    items_cursor = db[REPORT_CHECKLIST_COLLECTION].find({"groupId": group_id}).sort("date", 1)
+    raw_docs = list(db[REPORT_CHECKLIST_COLLECTION].find({"groupId": group_id}))
+
+    if not raw_docs:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Reporte no encontrado para el grupo {group_id}",
+        )
+
+    # Sort in Python by date ascending
+    sorted_docs = sorted(raw_docs, key=lambda doc: doc.get("date", 0))
+
     items = [
         ChecklistItem(
             name=str(doc.get("name", "")),
             date=int(doc.get("date", 0)),
             status=str(doc.get("status", "pendiente")),
         )
-        for doc in items_cursor
+        for doc in sorted_docs
     ]
-
-    if not items:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Reporte no encontrado para el grupo {group_id}",
-        )
 
     return Report(checklist=items)
