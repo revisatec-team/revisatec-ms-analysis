@@ -5,6 +5,7 @@ from app.db.cosmos import (
     COURSE_SETTINGS_COLLECTION,
     GITHUB_EVENTS_COLLECTION,
     ISSUES_COLLECTION,
+    FEEDBACK_COLLECTION,
 )
 from scripts.seed import seed_database
 
@@ -192,3 +193,18 @@ def test_issues_404_no_rubric(client: TestClient, mock_db):
     res = client.get("/groups/999/issues")
     assert res.status_code == 404
     assert "error" in res.json()
+
+
+def test_issues_use_group_name_from_feedback(client: TestClient, mock_db):
+    """Los inconvenientes muestran el nombre del grupo guardado en feedback, no 'Grupo {id}'."""
+    seed_database(mock_db)
+    mock_db[FEEDBACK_COLLECTION].insert_one(
+        {"groupId": 1, "courseId": 1, "groupName": "Grupo 1 - Sistema de Inventario"}
+    )
+    res = client.get("/groups/1/issues")
+    assert res.status_code == 200
+    assert all(i["groupName"] == "Grupo 1 - Sistema de Inventario" for i in res.json()["items"])
+    # Sin documento de feedback se conserva el valor por defecto
+    mock_db[FEEDBACK_COLLECTION].delete_many({"groupId": 1})
+    res2 = client.get("/groups/1/issues")
+    assert all(i["groupName"] == "Grupo 1" for i in res2.json()["items"])

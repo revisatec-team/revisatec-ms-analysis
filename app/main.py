@@ -1,4 +1,5 @@
 """Main application entry point for RevisaTEC MS2 Analysis."""
+import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
@@ -15,14 +16,16 @@ from app.routers import (
     report,
 )
 
+logger = logging.getLogger(__name__)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup logic
+    # Startup logic: la app arranca aunque falle, pero el error queda en los logs
     try:
         init_indexes()
     except Exception:
-        pass
+        logger.exception("init_indexes falló al arrancar")
     yield
     # Shutdown logic
     close_client()
