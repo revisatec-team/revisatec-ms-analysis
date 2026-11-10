@@ -40,6 +40,15 @@ def get_course_id_for_group(group_id: int) -> int:
     return 1
 
 
+def get_group_name(group_id: int) -> str:
+    """Nombre del grupo guardado en feedback (sembrado desde MS1); por defecto 'Grupo {id}'."""
+    db = get_database()
+    fb = db[FEEDBACK_COLLECTION].find_one({"groupId": group_id})
+    if fb and fb.get("groupName"):
+        return str(fb["groupName"])
+    return f"Grupo {group_id}"
+
+
 def get_course_settings_or_404(course_id: int) -> dict:
     """Retrieve course settings ensuring a rubric is configured, raising 404 otherwise."""
     db = get_database()
@@ -269,7 +278,7 @@ def detect_and_list_issues(
                 new_issue = {
                     "id": issue_id,
                     "groupId": group_id,
-                    "groupName": f"Grupo {group_id}",
+                    "groupName": get_group_name(group_id),
                     "type": "Commits de prueba",
                     "description": msg,
                     "date": int(commit.get("createdAt", time.time() * 1000)),
@@ -308,7 +317,7 @@ def detect_and_list_issues(
             Issue(
                 id=str(doc.get("id")),
                 groupId=int(doc.get("groupId")),
-                groupName=str(doc.get("groupName", f"Grupo {group_id}")),
+                groupName=get_group_name(group_id),
                 type=str(doc.get("type", "Commits de prueba")),
                 description=str(doc.get("description", "")),
                 date=int(doc.get("date", 0)),
