@@ -57,21 +57,21 @@ COURSES = {
 
 # commits/prs: cantidades; weeks: semanas (0 = la mas reciente) con actividad; reviewed: PRs con revisores suficientes
 GROUPS = {
-    1: dict(name="Grupo 1 - Sistema de Inventario", course=1, authors=["jmora", "alopez", "kvargas"], commits=18, weeks=[0, 1, 2, 3], prs=4, reviewed=4, wip=1,
+    1: dict(name="Grupo 1 - Sistema de Inventario", course=1, commits=18, weeks=[0, 1, 2, 3], prs=4, reviewed=4, wip=1,
             topics=["tabla de productos", "consulta de existencias", "procedimiento de reabastecimiento", "indice por codigo de barras", "vista de movimientos", "disparador de auditoria"]),
-    5: dict(name="Grupo 2 - Gestion de Citas", course=1, authors=["spineda", "dcastro", "mhernandez"], commits=12, weeks=[0, 1, 3], prs=3, reviewed=2, wip=0,
+    5: dict(name="Grupo 2 - Gestion de Citas", course=1, commits=12, weeks=[0, 1, 3], prs=3, reviewed=2, wip=0,
             topics=["modelo de pacientes", "consulta de agenda", "restriccion de horarios", "vista de citas pendientes", "script de datos iniciales"]),
-    4: dict(name="Grupo 1 - Analizador de Gramaticas", course=4, authors=["rsolis", "plopez", "gchaves"], commits=15, weeks=[0, 1, 2, 3], prs=3, reviewed=3, wip=1,
+    4: dict(name="Grupo 1 - Analizador de Gramaticas", course=4, commits=15, weeks=[0, 1, 2, 3], prs=3, reviewed=3, wip=1,
             topics=["tokenizador", "calculo de conjuntos primero", "tabla LL(1)", "manejo de errores sintacticos", "generador de arbol de derivacion"]),
-    6: dict(name="Grupo 2 - Interprete Funcional", course=4, authors=["ebrenes", "tcalvo", "njimenez"], commits=8, weeks=[0, 2], prs=2, reviewed=1, wip=2,
+    6: dict(name="Grupo 2 - Interprete Funcional", course=4, commits=8, weeks=[0, 2], prs=2, reviewed=1, wip=2,
             topics=["evaluador de expresiones", "cierres lexicos", "funciones de orden superior", "entorno de variables"]),
-    7: dict(name="Grupo 1 - Plataforma de Reservas", course=5, authors=["lrojas", "vcespedes", "agamboa"], commits=20, weeks=[0, 1, 2, 3], prs=5, reviewed=5, wip=0,
+    7: dict(name="Grupo 1 - Plataforma de Reservas", course=5, commits=20, weeks=[0, 1, 2, 3], prs=5, reviewed=5, wip=0,
             topics=["patron repositorio", "servicio de reservas", "controlador REST", "patron fabrica de notificaciones", "validacion de disponibilidad", "capa de persistencia"]),
-    8: dict(name="Grupo 2 - App de Notificaciones", course=5, authors=["mquesada", "iarias", "bzamora"], commits=14, weeks=[0, 1, 2], prs=4, reviewed=3, wip=1,
+    8: dict(name="Grupo 2 - App de Notificaciones", course=5, commits=14, weeks=[0, 1, 2], prs=4, reviewed=3, wip=1,
             topics=["patron observador", "canal de correo", "plantillas de mensaje", "cola de envio", "preferencias de usuario"]),
-    9: dict(name="Grupo 1 - Plan de Proyecto ERP", course=6, authors=["cmendez", "fsegura", "oalfaro"], commits=10, weeks=[0, 1, 3], prs=2, reviewed=2, wip=0,
+    9: dict(name="Grupo 1 - Plan de Proyecto ERP", course=6, commits=10, weeks=[0, 1, 3], prs=2, reviewed=2, wip=0,
             topics=["cronograma del proyecto", "matriz de interesados", "estimacion de costos", "plan de comunicaciones"]),
-    10: dict(name="Grupo 2 - Gestion de Riesgos", course=6, authors=["hvillalobos", "ucampos", "wbarrantes"], commits=6, weeks=[1, 3], prs=2, reviewed=0, wip=1,
+    10: dict(name="Grupo 2 - Gestion de Riesgos", course=6, commits=6, weeks=[1, 3], prs=2, reviewed=0, wip=1,
             topics=["registro de riesgos", "matriz de probabilidad e impacto", "plan de mitigacion", "seguimiento de riesgos"]),
 }
 
@@ -81,6 +81,33 @@ def fetch_ms1_events(course_id, key):
                   headers={"Ocp-Apim-Subscription-Key": key}, timeout=120)
     r.raise_for_status()
     return r.json().get("items", [])
+
+
+def fetch_ms1_members(group_id, key):
+    """Obtiene los integrantes del grupo desde MS1 y devuelve la lista de githubUser sin vacíos."""
+    r = httpx.get(
+        f"{APIM_BASE}/groups/{group_id}/members",
+        headers={"Ocp-Apim-Subscription-Key": key},
+        timeout=120,
+    )
+    r.raise_for_status()
+    data = r.json()
+    if isinstance(data, dict):
+        raw_members = data.get("members") or data.get("items") or []
+    elif isinstance(data, list):
+        raw_members = data
+    else:
+        raw_members = []
+
+    users = []
+    for m in raw_members:
+        if isinstance(m, dict):
+            u = m.get("githubUser")
+            if u and isinstance(u, str) and u.strip():
+                users.append(u.strip())
+        elif isinstance(m, str) and m.strip():
+            users.append(m.strip())
+    return list(dict.fromkeys(users))
 
 
 def build_events(gid, g, min_reviewers, now_ms):
@@ -110,16 +137,26 @@ def build_events(gid, g, min_reviewers, now_ms):
     return events
 
 
-def run(apply, ms1_events=None):
+def run(apply, ms1_events=None, ms1_members=None):
     key = os.environ.get("APIM_KEY", "")
     now_ms = int(time.time() * 1000)
+    if (ms1_events is None or ms1_members is None) and not key:
+        sys.exit("Falta $env:APIM_KEY (se usa solo para LEER los eventos e integrantes de MS1).")
+
     if ms1_events is None:
-        if not key:
-            sys.exit("Falta $env:APIM_KEY (se usa solo para LEER los eventos de MS1).")
         ms1_events = {c: fetch_ms1_events(c, key) for c in COURSES}
     for c, evs in ms1_events.items():
         if not evs:
             sys.exit(f"MS1 no devolvio eventos para el curso {c}; no hay fechas para el reporte.")
+
+    if ms1_members is None:
+        ms1_members = {gid: fetch_ms1_members(gid, key) for gid in GROUPS}
+
+    for gid in GROUPS:
+        authors = ms1_members.get(gid) or []
+        if not authors:
+            sys.exit(f"MS1 no devolvió integrantes con githubUser para el grupo {gid}.")
+        GROUPS[gid]["authors"] = authors
 
     print(f"Modo: {'APLICAR' if apply else 'DRY-RUN (no escribe)'}")
     for cid, c in COURSES.items():
@@ -130,9 +167,10 @@ def run(apply, ms1_events=None):
         evs = build_events(gid, g, COURSES[g["course"]]["minReviewers"], now_ms)
         plan[gid] = evs
         n_issue = sum(1 for e in evs if e["type"] == "commit" and e["message"].split(":")[0] in ("wip", "prueba"))
-        print(f"grupo {gid} ({g['name']}, curso {g['course']}): {len(evs)} eventos, {n_issue} inconvenientes esperados")
+        authors_str = ", ".join(g["authors"])
+        print(f"grupo {gid} ({g['name']}, curso {g['course']}): autores=[{authors_str}], {len(evs)} eventos, {n_issue} inconvenientes esperados")
     if not apply:
-        return
+        return plan
 
     db = get_database()
     init_indexes(db)
