@@ -28,7 +28,7 @@ def get_or_create_feedback(group_id: int) -> Feedback:
 
     db = get_database()
     doc = db[FEEDBACK_COLLECTION].find_one({"groupId": group_id})
-    if doc:
+    if doc and doc.get("ai") is not None:
         return Feedback(
             groupName=doc.get("groupName", f"Grupo {group_id}"),
             deliveryTitle=doc.get("deliveryTitle", "Entrega actual"),
@@ -56,19 +56,29 @@ def get_or_create_feedback(group_id: int) -> Feedback:
         ai_text = f"El grupo obtiene {int(round(analysis.score))}/100."
 
     now_ms = int(time.time() * 1000)
+    group_name = doc.get("groupName", f"Grupo {group_id}") if doc else f"Grupo {group_id}"
+    delivery_title = doc.get("deliveryTitle", "Entrega actual") if doc else "Entrega actual"
+    professor = doc.get("professor", "") if doc else ""
+    status = doc.get("status", "draft") if doc else "draft"
+    published_at = doc.get("publishedAt") if doc else None
+
     draft_doc = {
         "groupId": group_id,
         "courseId": course_id,
-        "groupName": f"Grupo {group_id}",
-        "deliveryTitle": "Entrega actual",
+        "groupName": group_name,
+        "deliveryTitle": delivery_title,
         "score": float(analysis.score),
         "ai": ai_text,
-        "professor": "",
-        "status": "draft",
+        "professor": professor,
+        "status": status,
         "updatedAt": now_ms,
-        "publishedAt": None,
+        "publishedAt": published_at,
     }
-    db[FEEDBACK_COLLECTION].insert_one(draft_doc)
+    db[FEEDBACK_COLLECTION].update_one(
+        {"groupId": group_id},
+        {"$set": draft_doc},
+        upsert=True,
+    )
 
     return Feedback(
         groupName=draft_doc["groupName"],
@@ -77,7 +87,7 @@ def get_or_create_feedback(group_id: int) -> Feedback:
         ai=draft_doc["ai"],
         professor=draft_doc["professor"],
         status=draft_doc["status"],
-        publishedAt=None,
+        publishedAt=draft_doc["publishedAt"],
     )
 
 
@@ -88,7 +98,7 @@ def update_feedback(group_id: int, feedback_input: FeedbackInput) -> Feedback:
 
     db = get_database()
     doc = db[FEEDBACK_COLLECTION].find_one({"groupId": group_id})
-    if not doc:
+    if not doc or doc.get("ai") is None:
         raise HTTPException(
             status_code=404,
             detail=f"Retroalimentación no encontrada para el grupo {group_id}",
@@ -123,7 +133,7 @@ def publish_feedback(group_id: int) -> Feedback:
 
     db = get_database()
     doc = db[FEEDBACK_COLLECTION].find_one({"groupId": group_id})
-    if not doc:
+    if not doc or doc.get("ai") is None:
         raise HTTPException(
             status_code=404,
             detail=f"Retroalimentación no encontrada para el grupo {group_id}",

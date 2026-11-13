@@ -10,11 +10,14 @@ from app.db.cosmos import (
 from scripts.seed import seed_database
 
 
-def test_analysis_404_no_rubric(client: TestClient):
+def test_analysis_404_no_rubric(client: TestClient, mock_db):
     """GET /groups/{id}/analysis returns 404 when course has no rubric."""
-    response = client.get("/groups/999/analysis")
+    mock_db[FEEDBACK_COLLECTION].insert_one(
+        {"groupId": 888, "courseId": 888, "groupName": "Grupo 888"}
+    )
+    response = client.get("/groups/888/analysis")
     assert response.status_code == 404
-    assert "error" in response.json()
+    assert response.json()["error"] == "El curso 888 no tiene una rúbrica configurada" 
 
 
 def test_analysis_with_seed_data(client: TestClient, mock_db):
@@ -70,6 +73,9 @@ def test_analysis_with_seed_data(client: TestClient, mock_db):
 def test_analysis_group_without_events(client: TestClient, mock_db):
     """GET /groups/{id}/analysis returns 0 metrics and empty evidence when group has no events."""
     seed_database(mock_db)
+    mock_db[FEEDBACK_COLLECTION].insert_one(
+        {"groupId": 99, "courseId": 1, "groupName": "Grupo 99"}
+    )
 
     # Group 99 has no events in seed data
     response = client.get("/groups/99/analysis")
@@ -190,21 +196,43 @@ def test_issues_400_invalid_pagination(client: TestClient, mock_db):
 
 def test_issues_404_no_rubric(client: TestClient, mock_db):
     """GET /groups/{id}/issues returns 404 when course has no rubric."""
-    res = client.get("/groups/999/issues")
+    mock_db[FEEDBACK_COLLECTION].insert_one(
+        {"groupId": 888, "courseId": 888, "groupName": "Grupo 888"}
+    )
+    res = client.get("/groups/888/issues")
     assert res.status_code == 404
-    assert "error" in res.json()
+    assert res.json()["error"] == "El curso 888 no tiene una rúbrica configurada" 
 
 
 def test_issues_use_group_name_from_feedback(client: TestClient, mock_db):
     """Los inconvenientes muestran el nombre del grupo guardado en feedback, no 'Grupo {id}'."""
     seed_database(mock_db)
-    mock_db[FEEDBACK_COLLECTION].insert_one(
-        {"groupId": 1, "courseId": 1, "groupName": "Grupo 1 - Sistema de Inventario"}
+    mock_db[FEEDBACK_COLLECTION].update_one(
+        {"groupId": 1},
+        {"$set": {"groupName": "Grupo 1 - Sistema de Inventario"}},
     )
     res = client.get("/groups/1/issues")
     assert res.status_code == 200
     assert all(i["groupName"] == "Grupo 1 - Sistema de Inventario" for i in res.json()["items"])
-    # Sin documento de feedback se conserva el valor por defecto
-    mock_db[FEEDBACK_COLLECTION].delete_many({"groupId": 1})
+    # Sin groupName en documento de feedback se conserva el valor por defecto ('Grupo {id}')
+    mock_db[FEEDBACK_COLLECTION].update_one({"groupId": 1}, {"$unset": {"groupName": ""}})
     res2 = client.get("/groups/1/issues")
+    assert res2.status_code == 200
     assert all(i["groupName"] == "Grupo 1" for i in res2.json()["items"])
+
+
+def test_unconfigured_group_404_all_endpoints(client: TestClient):
+    """Un grupo sin documento devuelve 404 con {'error': 'El grupo 999 no está configurado en MS2'} en todos los endpoints de grupo."""
+    endpoints = [
+        "/groups/999/analysis",
+        "/groups/999/criteria",
+        "/groups/999/progress-summary",
+        "/groups/999/issues",
+        "/groups/999/feedback",
+        "/groups/999/report",
+    ]
+    expected_error = "El grupo 999 no está configurado en MS2"
+    for ep in endpoints:
+        res = client.get(ep)
+        assert res.status_code == 404, f"Fallo en {ep}: status {res.status_code}"
+        assert res.json() == {"error": expected_error}, f"Fallo en {ep}: {res.json()}" 

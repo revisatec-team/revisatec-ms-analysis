@@ -8,11 +8,21 @@ from app.db.cosmos import (
 from scripts.seed import seed_database
 
 
-def test_feedback_404_no_rubric(client: TestClient):
+def test_feedback_404_no_rubric(client: TestClient, mock_db):
     """GET /groups/{id}/feedback returns 404 if course has no rubric."""
+    mock_db[FEEDBACK_COLLECTION].insert_one(
+        {"groupId": 888, "courseId": 888, "groupName": "Grupo 888"}
+    )
+    res = client.get("/groups/888/feedback")
+    assert res.status_code == 404
+    assert res.json()["error"] == "El curso 888 no tiene una rúbrica configurada"
+
+
+def test_feedback_404_unconfigured_group(client: TestClient):
+    """GET /groups/{id}/feedback returns 404 when group is not configured in MS2."""
     res = client.get("/groups/999/feedback")
     assert res.status_code == 404
-    assert "error" in res.json()
+    assert res.json() == {"error": "El grupo 999 no está configurado en MS2"}
 
 
 def test_get_feedback_creates_draft(client: TestClient, mock_db):

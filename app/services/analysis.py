@@ -32,12 +32,15 @@ ISSUE_KEYWORDS_PATTERN = re.compile(r"\b(test|prueba|wip|asdf|tmp)\b", re.IGNORE
 
 
 def get_course_id_for_group(group_id: int) -> int:
-    """Resolve the courseId for a group, defaulting to 1."""
+    """Resolve the courseId for a group from FEEDBACK_COLLECTION; raises 404 if not found or missing courseId."""
     db = get_database()
     fb = db[FEEDBACK_COLLECTION].find_one({"groupId": group_id})
-    if fb and fb.get("courseId"):
-        return int(fb["courseId"])
-    return 1
+    if not fb or not fb.get("courseId"):
+        raise HTTPException(
+            status_code=404,
+            detail=f"El grupo {group_id} no está configurado en MS2",
+        )
+    return int(fb["courseId"])
 
 
 def get_group_name(group_id: int) -> str:

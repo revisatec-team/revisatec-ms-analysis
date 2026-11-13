@@ -4,6 +4,7 @@ from fastapi.testclient import TestClient
 from app.db.cosmos import (
     COURSE_SETTINGS_COLLECTION,
     GITHUB_EVENTS_COLLECTION,
+    FEEDBACK_COLLECTION,
 )
 from scripts.seed import seed_database
 
@@ -207,12 +208,15 @@ def test_seed_idempotency(mock_db):
     result1 = seed_database(mock_db)
     assert result1["course_settings_count"] == 1
     assert result1["github_events_count"] == result1["total_events"]
+    assert result1["feedback_count"] == result1["total_feedback"]
 
     # Re-run seed on the same database
     result2 = seed_database(mock_db)
     assert result2["course_settings_count"] == 1
     assert result2["github_events_count"] == result1["total_events"]
+    assert result2["feedback_count"] == result1["total_feedback"]
 
     # Verify exact collection counts directly in DB
     assert mock_db[COURSE_SETTINGS_COLLECTION].count_documents({}) == 1
     assert mock_db[GITHUB_EVENTS_COLLECTION].count_documents({}) == result1["total_events"]
+    assert mock_db[FEEDBACK_COLLECTION].count_documents({}) == result1["total_feedback"]
