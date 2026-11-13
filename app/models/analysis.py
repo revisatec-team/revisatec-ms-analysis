@@ -30,6 +30,7 @@ class Analysis(BaseModel):
 
 class ProgressItem(BaseModel):
     criterionId: str
+    name: str
     status: str  # "on_track", "at_risk", "delayed"
     note: str
 

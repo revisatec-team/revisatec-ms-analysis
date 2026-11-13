@@ -10,6 +10,7 @@ from app.db.cosmos import (
     COURSE_SETTINGS_COLLECTION,
     GITHUB_EVENTS_COLLECTION,
     REPORT_CHECKLIST_COLLECTION,
+    FEEDBACK_COLLECTION,
     init_indexes,
 )
 
@@ -263,16 +264,45 @@ def seed_database(db: Optional[Database] = None) -> dict:
             upsert=True,
         )
 
+    # 4. Base feedback documents for groups 1, 2, 3
+    base_feedback_items = [
+        {"groupId": 1, "courseId": 1, "groupName": "Grupo 1"},
+        {"groupId": 2, "courseId": 1, "groupName": "Grupo 2"},
+        {"groupId": 3, "courseId": 1, "groupName": "Grupo 3"},
+    ]
+
+    for fb in base_feedback_items:
+        db[FEEDBACK_COLLECTION].update_one(
+            {"groupId": fb["groupId"]},
+            {
+                "$set": {
+                    "courseId": fb["courseId"],
+                    "groupName": fb["groupName"],
+                },
+                "$setOnInsert": {
+                    "deliveryTitle": "Entrega actual",
+                    "professor": "",
+                    "status": "draft",
+                    "publishedAt": None,
+                    "updatedAt": now_ms,
+                },
+            },
+            upsert=True,
+        )
+
     course_settings_count = db[COURSE_SETTINGS_COLLECTION].count_documents({})
     github_events_count = db[GITHUB_EVENTS_COLLECTION].count_documents({})
     report_checklist_count = db[REPORT_CHECKLIST_COLLECTION].count_documents({})
+    feedback_count = db[FEEDBACK_COLLECTION].count_documents({})
 
     return {
         "course_settings_count": course_settings_count,
         "github_events_count": github_events_count,
         "report_checklist_count": report_checklist_count,
+        "feedback_count": feedback_count,
         "total_events": len(events),
         "total_checklist": len(checklist_items),
+        "total_feedback": len(base_feedback_items),
     }
 
 

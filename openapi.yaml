@@ -280,8 +280,16 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Feedback'
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '404':
           $ref: '#/components/responses/NotFound'
+        '409':
+          description: La retroalimentación ya fue publicada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /groups/{id}/direct-reviews:
     parameters:
     - $ref: '#/components/parameters/id'
@@ -569,6 +577,8 @@ components:
             properties:
               criterionId:
                 type: string
+              name:
+                type: string
               status:
                 type: string
                 enum:
@@ -603,6 +613,14 @@ components:
           enum:
           - draft
           - published
+        publishedAt:
+          type: integer
+          format: int64
+          nullable: true
+          description: Epoch ms
+        notified:
+          type: boolean
+          description: false si la cola falló al emitir
     DirectReviewInput:
       type: object
       required:
@@ -625,7 +643,7 @@ components:
       type: object
       properties:
         id:
-          type: integer
+          type: string
         groupId:
           type: integer
         groupName:

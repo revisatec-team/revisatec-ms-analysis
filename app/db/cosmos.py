@@ -99,7 +99,7 @@ def init_indexes(db: Optional[Database] = None) -> None:
         logger.warning(f"Index issues.date already exists or skipped: {e}")
 
     try:
-        db[ISSUES_COLLECTION].create_index("sourceEventId")
+        db[ISSUES_COLLECTION].create_index("sourceEventId", unique=True)
     except Exception as e:
         logger.warning(f"Index issues.sourceEventId already exists or skipped: {e}")
 

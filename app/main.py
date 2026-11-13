@@ -3,7 +3,6 @@ import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
@@ -38,15 +37,6 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS middleware
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
 
 # Global Exception Handlers
 @app.exception_handler(RequestValidationError)
@@ -77,6 +67,13 @@ async def starlette_http_exception_handler(request: Request, exc: StarletteHTTPE
     if exc.status_code == 404 and detail == "Not Found":
         detail = "Recurso no encontrado"
     return JSONResponse(status_code=exc.status_code, content={"error": str(detail)})
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    """Handle unexpected server errors, log with path, and return HTTP 500."""
+    logger.exception(f"Unhandled exception at {request.url.path}: {exc}")
+    return JSONResponse(status_code=500, content={"error": "Error interno del servidor"})
 
 
 # Routers

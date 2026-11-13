@@ -5,6 +5,7 @@ import time
 import uuid
 from typing import Dict, List, Tuple
 from fastapi import HTTPException
+from pymongo.errors import DuplicateKeyError
 
 from app.db.cosmos import (
     get_database,
@@ -32,12 +33,15 @@ ISSUE_KEYWORDS_PATTERN = re.compile(r"\b(test|prueba|wip|asdf|tmp)\b", re.IGNORE
 
 
 def get_course_id_for_group(group_id: int) -> int:
-    """Resolve the courseId for a group, defaulting to 1."""
+    """Resolve the courseId for a group from FEEDBACK_COLLECTION; raises 404 if not found or missing courseId."""
     db = get_database()
     fb = db[FEEDBACK_COLLECTION].find_one({"groupId": group_id})
-    if fb and fb.get("courseId"):
-        return int(fb["courseId"])
-    return 1
+    if not fb or not fb.get("courseId"):
+        raise HTTPException(
+            status_code=404,
+            detail=f"El grupo {group_id} no está configurado en MS2",
+        )
+    return int(fb["courseId"])
 
 
 def get_group_name(group_id: int) -> str:
@@ -214,7 +218,14 @@ def get_progress_summary(group_id: int) -> ProgressSummary:
             status = "delayed"
             note = f"Criterio '{c.name}' con bajo cumplimiento ({c.percent}%)"
 
-        items.append(ProgressItem(criterionId=crit_id, status=status, note=note))
+        items.append(
+            ProgressItem(
+                criterionId=crit_id,
+                name=c.name,
+                status=status,
+                note=note,
+            )
+        )
 
     return ProgressSummary(
         groupId=group_id,
@@ -285,7 +296,10 @@ def detect_and_list_issues(
                     "status": "Sin resolver",
                     "sourceEventId": source_id,
                 }
-                db[ISSUES_COLLECTION].insert_one(new_issue)
+                try:
+                    db[ISSUES_COLLECTION].insert_one(new_issue)
+                except DuplicateKeyError:
+                    continue
 
                 # Emit queue event
                 queue_event = create_queue_event(
@@ -293,7 +307,7 @@ def detect_and_list_issues(
                     course_id=course_id,
                     group_id=group_id,
                     title="Inconveniente detectado",
-                    message=f"Se detectó un commit de prueba en Grupo {group_id}: '{msg}'",
+                    message=f"Se detectó un commit de prueba en {get_group_name(group_id)}: '{msg}'",
                 )
                 try:
                     publisher.publish(queue_event)

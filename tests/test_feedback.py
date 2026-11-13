@@ -1,18 +1,30 @@
+import time
 """Tests for feedback, publish queue integration, and direct reviews."""
 from fastapi.testclient import TestClient
 from app.db.cosmos import (
     COURSE_SETTINGS_COLLECTION,
     FEEDBACK_COLLECTION,
     DIRECT_REVIEWS_COLLECTION,
+    GITHUB_EVENTS_COLLECTION,
 )
 from scripts.seed import seed_database
 
 
-def test_feedback_404_no_rubric(client: TestClient):
+def test_feedback_404_no_rubric(client: TestClient, mock_db):
     """GET /groups/{id}/feedback returns 404 if course has no rubric."""
+    mock_db[FEEDBACK_COLLECTION].insert_one(
+        {"groupId": 888, "courseId": 888, "groupName": "Grupo 888"}
+    )
+    res = client.get("/groups/888/feedback")
+    assert res.status_code == 404
+    assert res.json()["error"] == "El curso 888 no tiene una rúbrica configurada"
+
+
+def test_feedback_404_unconfigured_group(client: TestClient):
+    """GET /groups/{id}/feedback returns 404 when group is not configured in MS2."""
     res = client.get("/groups/999/feedback")
     assert res.status_code == 404
-    assert "error" in res.json()
+    assert res.json() == {"error": "El grupo 999 no está configurado en MS2"}
 
 
 def test_get_feedback_creates_draft(client: TestClient, mock_db):
@@ -36,24 +48,29 @@ def test_get_feedback_creates_draft(client: TestClient, mock_db):
 
 
 def test_update_feedback(client: TestClient, mock_db):
-    """PUT /groups/{id}/feedback updates professor review."""
+    """PUT /groups/{id}/feedback creates or updates professor review with AI draft."""
     seed_database(mock_db)
 
-    # 404 if feedback does not exist
-    res_404 = client.put("/groups/1/feedback", json={"professor": "Excelente trabajo."})
+    # 404 if group is not configured in MS2
+    res_404 = client.put("/groups/999/feedback", json={"professor": "Excelente trabajo."})
     assert res_404.status_code == 404
-
-    # Create draft first
-    client.get("/groups/1/feedback")
+    assert res_404.json() == {"error": "El grupo 999 no está configurado en MS2"}
 
     # 400 if professor field is missing
     res_400 = client.put("/groups/1/feedback", json={})
     assert res_400.status_code == 400
 
-    # Successful update
-    res = client.put("/groups/1/feedback", json={"professor": "Buen trabajo en los PRs."})
+    # Successful update without prior GET: creates doc with AI draft and professor review
+    res = client.put("/groups/1/feedback", json={"professor": "Excelente trabajo."})
     assert res.status_code == 200
-    assert res.json()["professor"] == "Buen trabajo en los PRs."
+    assert res.json()["professor"] == "Excelente trabajo."
+    assert "El grupo obtiene" in res.json()["ai"]
+    assert res.json()["status"] == "draft"
+
+    # Subsequent update updates professor text
+    res2 = client.put("/groups/1/feedback", json={"professor": "Buen trabajo en los PRs."})
+    assert res2.status_code == 200
+    assert res2.json()["professor"] == "Buen trabajo en los PRs."
 
 
 def test_publish_feedback_success_and_queue(client: TestClient, mock_db, fake_queue):
@@ -175,3 +192,90 @@ def test_queue_message_contract_compliance(client: TestClient, mock_db, fake_que
         assert isinstance(event["createdAt"], int)
         assert event["createdAt"] > 1e11  # Epoch ms strictly > 1e11
         assert event["source"] == "ms-analysis"
+
+
+def test_publish_feedback_queue_event_uses_real_group_name(client: TestClient, mock_db, fake_queue):
+    """El mensaje del evento FEEDBACK_PUBLISHED en la cola contiene el groupName real del grupo."""
+    seed_database(mock_db)
+    mock_db[FEEDBACK_COLLECTION].update_one(
+        {"groupId": 1},
+        {"$set": {"groupName": "Grupo 1 - Plataforma de Reservas"}},
+    )
+    client.get("/groups/1/feedback")
+    client.put("/groups/1/feedback", json={"professor": "Buen trabajo en los PRs."})
+
+    fake_queue.clear()
+    res = client.post("/groups/1/feedback/publish")
+    assert res.status_code == 200
+    assert len(fake_queue.published_events) == 1
+    ev = fake_queue.published_events[0]
+    assert ev["type"] == "FEEDBACK_PUBLISHED"
+    assert "Se publicó la retroalimentación de Grupo 1 - Plataforma de Reservas" in ev["message"]
+
+
+def test_publish_feedback_twice_returns_409(client: TestClient, mock_db, fake_queue):
+    """Publicar dos veces devuelve 409 en la segunda llamada y la cola solo tiene un evento."""
+    seed_database(mock_db)
+    client.get("/groups/1/feedback")
+    client.put("/groups/1/feedback", json={"professor": "Revisión final aprobada."})
+
+    fake_queue.clear()
+    # Primera publicación: 200 OK
+    res1 = client.post("/groups/1/feedback/publish")
+    assert res1.status_code == 200
+    assert len(fake_queue.published_events) == 1
+
+    # Segunda publicación: 409 Conflict
+    res2 = client.post("/groups/1/feedback/publish")
+    assert res2.status_code == 409
+    assert res2.json() == {"error": "La retroalimentación ya fue publicada"}
+    # La cola solo tiene el primer evento
+    assert len(fake_queue.published_events) == 1
+
+
+def test_feedback_recalculation_for_draft_and_frozen_for_published(client: TestClient, mock_db):
+    """GET recalcula score y ai si el status es draft; no recalcula si es published."""
+    seed_database(mock_db)
+
+    # 1. Crear borrador inicial con GET
+    res1 = client.get("/groups/1/feedback")
+    assert res1.status_code == 200
+    initial_score = res1.json()["score"]
+
+    # Agregar commits para cambiar la métrica y nota
+    now_ms = int(time.time() * 1000)
+    new_commits = [
+        {
+            "id": f"g1_recalc_{i}",
+            "groupId": 1,
+            "type": "commit",
+            "author": "estudiante1",
+            "reviewers": [],
+            "message": f"feat: commit de avance adicional {i}",
+            "createdAt": now_ms - (i * 1000),
+        }
+        for i in range(25)
+    ]
+    mock_db[GITHUB_EVENTS_COLLECTION].insert_many(new_commits)
+
+    # Como status es 'draft', GET debe recalcular
+    res2 = client.get("/groups/1/feedback")
+    assert res2.status_code == 200
+    assert res2.json()["score"] != initial_score
+
+    # Ahora publicamos el feedback
+    client.put("/groups/1/feedback", json={"professor": "Listo para publicar."})
+    res_pub = client.post("/groups/1/feedback/publish")
+    assert res_pub.status_code == 200
+    published_ai = res_pub.json()["ai"]
+    published_score = res_pub.json()["score"]
+
+    # Borramos todos los eventos para que un recálculo daría 0
+    mock_db[GITHUB_EVENTS_COLLECTION].delete_many({"groupId": 1})
+
+    # Como status es 'published', GET NO debe recalcular nada (queda congelado)
+    res_frozen = client.get("/groups/1/feedback")
+    assert res_frozen.status_code == 200
+    assert res_frozen.json()["score"] == published_score
+    assert res_frozen.json()["ai"] == published_ai
+    assert res_frozen.json()["status"] == "published"

@@ -4,6 +4,7 @@ from fastapi.testclient import TestClient
 from app.db.cosmos import (
     COURSE_SETTINGS_COLLECTION,
     GITHUB_EVENTS_COLLECTION,
+    FEEDBACK_COLLECTION,
 )
 from scripts.seed import seed_database
 
@@ -207,12 +208,45 @@ def test_seed_idempotency(mock_db):
     result1 = seed_database(mock_db)
     assert result1["course_settings_count"] == 1
     assert result1["github_events_count"] == result1["total_events"]
+    assert result1["feedback_count"] == result1["total_feedback"]
 
     # Re-run seed on the same database
     result2 = seed_database(mock_db)
     assert result2["course_settings_count"] == 1
     assert result2["github_events_count"] == result1["total_events"]
+    assert result2["feedback_count"] == result1["total_feedback"]
 
     # Verify exact collection counts directly in DB
     assert mock_db[COURSE_SETTINGS_COLLECTION].count_documents({}) == 1
     assert mock_db[GITHUB_EVENTS_COLLECTION].count_documents({}) == result1["total_events"]
+    assert mock_db[FEEDBACK_COLLECTION].count_documents({}) == result1["total_feedback"]
+
+
+def test_upsert_course_settings_duplicate_key_error_retry(mock_db, monkeypatch):
+    """Verifica que _upsert_course_settings captura DuplicateKeyError en update_one con upsert=True y reintenta sin upsert."""
+    from app.services.course_settings import _upsert_course_settings
+    from pymongo.errors import DuplicateKeyError
+
+    # Pre-crear el documento en la base de datos para que el segundo intento (upsert=False) tenga qué actualizar
+    mock_db[COURSE_SETTINGS_COLLECTION].insert_one({"courseId": 500, "instructions": {"text": "Original"}})
+
+    real_update_one = mock_db[COURSE_SETTINGS_COLLECTION].update_one
+    first_call = True
+
+    def mock_update_one(filter, update, upsert=False, **kwargs):
+        nonlocal first_call
+        if first_call and upsert:
+            first_call = False
+            raise DuplicateKeyError("E11000 duplicate key error")
+        return real_update_one(filter, update, upsert=upsert, **kwargs)
+
+    monkeypatch.setattr(mock_db[COURSE_SETTINGS_COLLECTION], "update_one", mock_update_one)
+
+    # Llamar _upsert_course_settings
+    _upsert_course_settings(500, {"rubric": {"criteria": []}})
+
+    doc = mock_db[COURSE_SETTINGS_COLLECTION].find_one({"courseId": 500})
+    assert doc is not None
+    assert "rubric" in doc
+    assert doc["instructions"]["text"] == "Original"
+    assert not first_call  # Se disparó la excepción y se reintentó
