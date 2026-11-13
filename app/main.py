@@ -79,6 +79,13 @@ async def starlette_http_exception_handler(request: Request, exc: StarletteHTTPE
     return JSONResponse(status_code=exc.status_code, content={"error": str(detail)})
 
 
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    """Handle unexpected server errors, log with path, and return HTTP 500."""
+    logger.exception(f"Unhandled exception at {request.url.path}: {exc}")
+    return JSONResponse(status_code=500, content={"error": "Error interno del servidor"})
+
+
 # Routers
 app.include_router(health.router)
 app.include_router(course_settings.router)

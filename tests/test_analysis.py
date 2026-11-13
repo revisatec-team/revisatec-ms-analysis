@@ -235,4 +235,20 @@ def test_unconfigured_group_404_all_endpoints(client: TestClient):
     for ep in endpoints:
         res = client.get(ep)
         assert res.status_code == 404, f"Fallo en {ep}: status {res.status_code}"
-        assert res.json() == {"error": expected_error}, f"Fallo en {ep}: {res.json()}" 
+        assert res.json() == {"error": expected_error}, f"Fallo en {ep}: {res.json()}"
+
+
+def test_issue_detected_queue_event_uses_real_group_name(client: TestClient, mock_db, fake_queue):
+    """El mensaje del evento ISSUE_DETECTED en la cola contiene el groupName real del grupo."""
+    seed_database(mock_db)
+    mock_db[FEEDBACK_COLLECTION].update_one(
+        {"groupId": 1},
+        {"$set": {"groupName": "Grupo 1 - Plataforma de Reservas"}},
+    )
+    fake_queue.clear()
+    res = client.get("/groups/1/issues")
+    assert res.status_code == 200
+    assert len(fake_queue.published_events) > 0
+    ev = fake_queue.published_events[0]
+    assert ev["type"] == "ISSUE_DETECTED"
+    assert "Grupo 1 - Plataforma de Reservas" in ev["message"]

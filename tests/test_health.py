@@ -56,3 +56,17 @@ def test_cosmos_db_injection(mock_db):
     doc = db[COURSE_SETTINGS_COLLECTION].find_one({"courseId": 1})
     assert doc is not None
     assert doc["test"] is True
+
+
+def test_internal_server_error_handler():
+    """Test that unhandled exceptions return 500 with {'error': 'Error interno del servidor'}."""
+    from app.main import app
+
+    @app.get("/test-unhandled-exception")
+    def sample_failing_endpoint():
+        raise RuntimeError("Fallo inesperado del sistema")
+
+    client = TestClient(app, raise_server_exceptions=False)
+    response = client.get("/test-unhandled-exception")
+    assert response.status_code == 500
+    assert response.json() == {"error": "Error interno del servidor"}

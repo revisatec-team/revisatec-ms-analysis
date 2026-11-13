@@ -296,7 +296,7 @@ def detect_and_list_issues(
                     course_id=course_id,
                     group_id=group_id,
                     title="Inconveniente detectado",
-                    message=f"Se detectó un commit de prueba en Grupo {group_id}: '{msg}'",
+                    message=f"Se detectó un commit de prueba en {get_group_name(group_id)}: '{msg}'",
                 )
                 try:
                     publisher.publish(queue_event)

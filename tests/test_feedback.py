@@ -185,3 +185,22 @@ def test_queue_message_contract_compliance(client: TestClient, mock_db, fake_que
         assert isinstance(event["createdAt"], int)
         assert event["createdAt"] > 1e11  # Epoch ms strictly > 1e11
         assert event["source"] == "ms-analysis"
+
+
+def test_publish_feedback_queue_event_uses_real_group_name(client: TestClient, mock_db, fake_queue):
+    """El mensaje del evento FEEDBACK_PUBLISHED en la cola contiene el groupName real del grupo."""
+    seed_database(mock_db)
+    mock_db[FEEDBACK_COLLECTION].update_one(
+        {"groupId": 1},
+        {"$set": {"groupName": "Grupo 1 - Plataforma de Reservas"}},
+    )
+    client.get("/groups/1/feedback")
+    client.put("/groups/1/feedback", json={"professor": "Buen trabajo en los PRs."})
+
+    fake_queue.clear()
+    res = client.post("/groups/1/feedback/publish")
+    assert res.status_code == 200
+    assert len(fake_queue.published_events) == 1
+    ev = fake_queue.published_events[0]
+    assert ev["type"] == "FEEDBACK_PUBLISHED"
+    assert "Se publicó la retroalimentación de Grupo 1 - Plataforma de Reservas" in ev["message"]

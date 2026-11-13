@@ -15,6 +15,7 @@ from app.services.analysis import (
     get_course_id_for_group,
     get_course_settings_or_404,
     get_group_analysis,
+    get_group_name,
 )
 from app.services.queue_publisher import get_publisher, create_queue_event
 
@@ -30,7 +31,7 @@ def get_or_create_feedback(group_id: int) -> Feedback:
     doc = db[FEEDBACK_COLLECTION].find_one({"groupId": group_id})
     if doc and doc.get("ai") is not None:
         return Feedback(
-            groupName=doc.get("groupName", f"Grupo {group_id}"),
+            groupName=doc.get("groupName") or get_group_name(group_id),
             deliveryTitle=doc.get("deliveryTitle", "Entrega actual"),
             score=doc.get("score"),
             ai=doc.get("ai"),
@@ -56,7 +57,7 @@ def get_or_create_feedback(group_id: int) -> Feedback:
         ai_text = f"El grupo obtiene {int(round(analysis.score))}/100."
 
     now_ms = int(time.time() * 1000)
-    group_name = doc.get("groupName", f"Grupo {group_id}") if doc else f"Grupo {group_id}"
+    group_name = get_group_name(group_id)
     delivery_title = doc.get("deliveryTitle", "Entrega actual") if doc else "Entrega actual"
     professor = doc.get("professor", "") if doc else ""
     status = doc.get("status", "draft") if doc else "draft"
@@ -116,7 +117,7 @@ def update_feedback(group_id: int, feedback_input: FeedbackInput) -> Feedback:
     doc.update(update_data)
 
     return Feedback(
-        groupName=doc.get("groupName", f"Grupo {group_id}"),
+        groupName=doc.get("groupName") or get_group_name(group_id),
         deliveryTitle=doc.get("deliveryTitle", "Entrega actual"),
         score=doc.get("score"),
         ai=doc.get("ai"),
@@ -152,7 +153,7 @@ def publish_feedback(group_id: int) -> Feedback:
         {"$set": {"status": "published", "publishedAt": now_ms, "updatedAt": now_ms}},
     )
 
-    group_name = doc.get("groupName", f"Grupo {group_id}")
+    group_name = doc.get("groupName") or get_group_name(group_id)
     queue_event = create_queue_event(
         event_type="FEEDBACK_PUBLISHED",
         course_id=doc.get("courseId", course_id),
