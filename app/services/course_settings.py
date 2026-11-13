@@ -4,6 +4,12 @@ from typing import Optional
 from fastapi import HTTPException
 from pymongo.errors import DuplicateKeyError
 from app.db.cosmos import get_database, COURSE_SETTINGS_COLLECTION
+from app.models.course_settings import (
+    Rubric,
+    Instructions,
+    ScrapingConfig,
+    ScrapingFrequency,
+)
 
 
 def _upsert_course_settings(course_id: int, fields: dict) -> None:
@@ -22,12 +28,6 @@ def _upsert_course_settings(course_id: int, fields: dict) -> None:
             {"$set": update_doc},
             upsert=False,
         )
-from app.models.course_settings import (
-    Rubric,
-    Instructions,
-    ScrapingConfig,
-    ScrapingFrequency,
-)
 
 
 def calculate_next_run_at(frequency: ScrapingFrequency) -> int:
@@ -81,7 +81,6 @@ def get_instructions(course_id: int) -> Instructions:
 
 def update_instructions(course_id: int, instructions_input: Instructions) -> Instructions:
     """Upsert instructions for courseId."""
-    db = get_database()
     instructions_data = {"text": instructions_input.text}
 
     _upsert_course_settings(course_id, {"instructions": instructions_data})

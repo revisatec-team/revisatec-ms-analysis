@@ -110,7 +110,18 @@ def fetch_ms1_members(group_id, key):
     return list(dict.fromkeys(users))
 
 
-def build_events(gid, g, min_reviewers, now_ms):
+def build_events(gid, g, min_reviewers, now_ms, apply=False):
+    if len(g["authors"]) <= min_reviewers:
+        warning_msg = (
+            f"Advertencia: grupo {gid} ({g['name']}, curso {g.get('course')}) "
+            f"tiene {len(g['authors'])} integrante(s) y minReviewers={min_reviewers} "
+            f"(el autor del PR no puede revisarse a sí mismo)."
+        )
+        if not apply:
+            print(warning_msg)
+        elif g.get("reviewed", 0) > 0:
+            sys.exit(warning_msg)
+
     rng = random.Random(gid)
     prefixes = ["feat", "fix", "docs", "refactor", "chore"]
     events = []
@@ -164,7 +175,7 @@ def run(apply, ms1_events=None, ms1_members=None):
               f"scraping {c['frequency']}/min {c['minReviewers']}, reporte {len(ms1_events[cid])} hitos de MS1")
     plan = {}
     for gid, g in GROUPS.items():
-        evs = build_events(gid, g, COURSES[g["course"]]["minReviewers"], now_ms)
+        evs = build_events(gid, g, COURSES[g["course"]]["minReviewers"], now_ms, apply=apply)
         plan[gid] = evs
         n_issue = sum(1 for e in evs if e["type"] == "commit" and e["message"].split(":")[0] in ("wip", "prueba"))
         authors_str = ", ".join(g["authors"])
@@ -204,8 +215,12 @@ def run(apply, ms1_events=None, ms1_members=None):
             if a.criteria:
                 best = max(a.criteria, key=lambda c: c.percent)
                 worst = min(a.criteria, key=lambda c: c.percent)
-                ai = (f"El grupo obtiene {int(round(a.score))}/100. Fortaleza: {best.name} ({best.percent}%). "
-                      f"A mejorar: {worst.name} ({worst.percent}%).")
+                if len(a.criteria) == 1 or best.percent == worst.percent:
+                    ai = (f"El grupo obtiene {int(round(a.score))}/100. "
+                          f"Rendimiento parejo en todos los criterios ({best.percent}%).")
+                else:
+                    ai = (f"El grupo obtiene {int(round(a.score))}/100. Fortaleza: {best.name} ({best.percent}%). "
+                          f"A mejorar: {worst.name} ({worst.percent}%).")
             else:
                 ai = f"El grupo obtiene {int(round(a.score))}/100."
             db[FEEDBACK_COLLECTION].update_one({"groupId": gid}, {"$set": {"ai": ai, "score": float(a.score)}})

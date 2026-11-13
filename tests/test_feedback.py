@@ -279,3 +279,102 @@ def test_feedback_recalculation_for_draft_and_frozen_for_published(client: TestC
     assert res_frozen.json()["score"] == published_score
     assert res_frozen.json()["ai"] == published_ai
     assert res_frozen.json()["status"] == "published"
+
+
+def test_feedback_notified_persisted_on_queue_failure(client: TestClient, mock_db, fake_queue):
+    """Con cola fallida (fake_queue.should_fail = True), un GET posterior devuelve notified false; con éxito devuelve true."""
+    seed_database(mock_db)
+    client.get("/groups/1/feedback")
+    client.put("/groups/1/feedback", json={"professor": "Revisión lista."})
+
+    fake_queue.should_fail = True
+    res_pub = client.post("/groups/1/feedback/publish")
+    assert res_pub.status_code == 200
+    assert res_pub.json()["notified"] is False
+
+    # GET posterior devuelve notified=false persistido
+    res_get = client.get("/groups/1/feedback")
+    assert res_get.status_code == 200
+    assert res_get.json()["notified"] is False
+
+    # Probar con grupo 2 en caso exitoso
+    client.get("/groups/2/feedback")
+    client.put("/groups/2/feedback", json={"professor": "Aprobado grupo 2."})
+    fake_queue.should_fail = False
+    res_pub2 = client.post("/groups/2/feedback/publish")
+    assert res_pub2.status_code == 200
+    assert res_pub2.json()["notified"] is True
+
+    res_get2 = client.get("/groups/2/feedback")
+    assert res_get2.status_code == 200
+    assert res_get2.json()["notified"] is True
+
+
+def test_generate_ai_feedback_single_criterion_and_ties(client: TestClient, mock_db):
+    """_generate_ai_feedback omite 'A mejorar' y usa 'Rendimiento parejo' cuando hay 1 criterio o empates."""
+    # 1. Caso un solo criterio
+    mock_db[COURSE_SETTINGS_COLLECTION].insert_one({
+        "courseId": 70,
+        "rubric": {
+            "criteria": [{"name": "Criterio Unico", "weight": 100.0}],
+            "version": 1,
+            "interpretationStatus": "manual",
+        },
+    })
+    mock_db[FEEDBACK_COLLECTION].insert_one({
+        "groupId": 701,
+        "courseId": 70,
+        "groupName": "Grupo 701",
+    })
+
+    res_single = client.get("/groups/701/feedback")
+    assert res_single.status_code == 200
+    ai_single = res_single.json()["ai"]
+    assert "Rendimiento parejo en todos los criterios (" in ai_single
+    assert "A mejorar" not in ai_single
+    assert "Fortaleza" not in ai_single
+
+    # 2. Caso empates en todos los criterios (múltiples criterios con mismo %)
+    mock_db[COURSE_SETTINGS_COLLECTION].insert_one({
+        "courseId": 80,
+        "rubric": {
+            "criteria": [
+                {"name": "Calidad de codigo", "weight": 50.0},
+                {"name": "Revisiones de pares", "weight": 50.0},
+            ],
+            "version": 1,
+            "interpretationStatus": "manual",
+        },
+    })
+    mock_db[FEEDBACK_COLLECTION].insert_one({
+        "groupId": 801,
+        "courseId": 80,
+        "groupName": "Grupo 801",
+    })
+
+    # Sin eventos, ambos criterios tienen 0%
+    res_ties = client.get("/groups/801/feedback")
+    assert res_ties.status_code == 200
+    ai_ties = res_ties.json()["ai"]
+    assert "Rendimiento parejo en todos los criterios (0%)" in ai_ties
+    assert "A mejorar" not in ai_ties
+    assert "Fortaleza" not in ai_ties
+
+
+def test_update_feedback_published_returns_409(client: TestClient, mock_db):
+    """PUT /groups/{id}/feedback en retroalimentación ya publicada responde 409 y no se puede editar."""
+    seed_database(mock_db)
+    client.get("/groups/1/feedback")
+    client.put("/groups/1/feedback", json={"professor": "Original antes de publicar."})
+    res_pub = client.post("/groups/1/feedback/publish")
+    assert res_pub.status_code == 200
+
+    # Intentar editar con PUT responde 409
+    res_edit = client.put("/groups/1/feedback", json={"professor": "Intento de edición posterior."})
+    assert res_edit.status_code == 409
+    assert res_edit.json() == {"error": "La retroalimentación ya fue publicada y no se puede editar"}
+
+    # Confirmar que el texto del profesor no fue alterado
+    res_get = client.get("/groups/1/feedback")
+    assert res_get.status_code == 200
+    assert res_get.json()["professor"] == "Original antes de publicar."

@@ -260,6 +260,12 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '404':
           $ref: '#/components/responses/NotFound'
+        '409':
+          description: La retroalimentación ya fue publicada y no se puede editar
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /groups/{id}/feedback/publish:
     parameters:
     - $ref: '#/components/parameters/id'

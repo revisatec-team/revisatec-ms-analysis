@@ -28,6 +28,11 @@ def _generate_ai_feedback(analysis) -> str:
         sorted_criteria = sorted(criteria, key=lambda c: c.percent, reverse=True)
         best = sorted_criteria[0]
         worst = sorted_criteria[-1]
+        if len(criteria) == 1 or best.percent == worst.percent:
+            return (
+                f"El grupo obtiene {int(round(analysis.score))}/100. "
+                f"Rendimiento parejo en todos los criterios ({best.percent}%)."
+            )
         return (
             f"El grupo obtiene {int(round(analysis.score))}/100. "
             f"Fortaleza: {best.name} ({best.percent}%). "
@@ -54,6 +59,7 @@ def get_or_create_feedback(group_id: int) -> Feedback:
             professor=doc.get("professor", ""),
             status="published",
             publishedAt=doc.get("publishedAt"),
+            notified=doc.get("notified"),
         )
 
     # Si no existe o su status es "draft", recalcular score y ai
@@ -78,6 +84,7 @@ def get_or_create_feedback(group_id: int) -> Feedback:
         "status": status,
         "updatedAt": now_ms,
         "publishedAt": published_at,
+        "notified": doc.get("notified") if doc else None,
     }
     db[FEEDBACK_COLLECTION].update_one(
         {"groupId": group_id},
@@ -93,6 +100,7 @@ def get_or_create_feedback(group_id: int) -> Feedback:
         professor=draft_doc["professor"],
         status=draft_doc["status"],
         publishedAt=draft_doc["publishedAt"],
+        notified=draft_doc.get("notified"),
     )
 
 
@@ -104,6 +112,12 @@ def update_feedback(group_id: int, feedback_input: FeedbackInput) -> Feedback:
     db = get_database()
     doc = db[FEEDBACK_COLLECTION].find_one({"groupId": group_id})
     now_ms = int(time.time() * 1000)
+
+    if doc and doc.get("status") == "published":
+        raise HTTPException(
+            status_code=409,
+            detail="La retroalimentación ya fue publicada y no se puede editar",
+        )
 
     if not doc or doc.get("ai") is None:
         analysis = get_group_analysis(group_id)
@@ -124,6 +138,7 @@ def update_feedback(group_id: int, feedback_input: FeedbackInput) -> Feedback:
             "status": status,
             "updatedAt": now_ms,
             "publishedAt": published_at,
+            "notified": doc.get("notified") if doc else None,
         }
         db[FEEDBACK_COLLECTION].update_one(
             {"groupId": group_id},
@@ -150,6 +165,7 @@ def update_feedback(group_id: int, feedback_input: FeedbackInput) -> Feedback:
         professor=doc.get("professor", ""),
         status=doc.get("status", "draft"),
         publishedAt=doc.get("publishedAt"),
+        notified=doc.get("notified"),
     )
 
 
@@ -166,12 +182,6 @@ def publish_feedback(group_id: int) -> Feedback:
             detail=f"Retroalimentación no encontrada para el grupo {group_id}",
         )
 
-    if doc.get("status") == "published":
-        raise HTTPException(
-            status_code=409,
-            detail="La retroalimentación ya fue publicada",
-        )
-
     professor_text = (doc.get("professor") or "").strip()
     if not professor_text:
         raise HTTPException(
@@ -180,10 +190,15 @@ def publish_feedback(group_id: int) -> Feedback:
         )
 
     now_ms = int(time.time() * 1000)
-    db[FEEDBACK_COLLECTION].update_one(
-        {"groupId": group_id},
+    result = db[FEEDBACK_COLLECTION].update_one(
+        {"groupId": group_id, "status": {"$ne": "published"}},
         {"$set": {"status": "published", "publishedAt": now_ms, "updatedAt": now_ms}},
     )
+    if result.matched_count == 0:
+        raise HTTPException(
+            status_code=409,
+            detail="La retroalimentación ya fue publicada",
+        )
 
     group_name = doc.get("groupName") or get_group_name(group_id)
     queue_event = create_queue_event(
@@ -204,6 +219,12 @@ def publish_feedback(group_id: int) -> Feedback:
     except Exception as e:
         notified = False
         logger.error(f"Error publishing FEEDBACK_PUBLISHED event: {e}")
+
+    # Persistir notified en base de datos
+    db[FEEDBACK_COLLECTION].update_one(
+        {"groupId": group_id},
+        {"$set": {"notified": notified}},
+    )
 
     return Feedback(
         groupName=group_name,
