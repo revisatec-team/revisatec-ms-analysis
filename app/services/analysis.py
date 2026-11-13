@@ -5,6 +5,7 @@ import time
 import uuid
 from typing import Dict, List, Tuple
 from fastapi import HTTPException
+from pymongo.errors import DuplicateKeyError
 
 from app.db.cosmos import (
     get_database,
@@ -217,7 +218,14 @@ def get_progress_summary(group_id: int) -> ProgressSummary:
             status = "delayed"
             note = f"Criterio '{c.name}' con bajo cumplimiento ({c.percent}%)"
 
-        items.append(ProgressItem(criterionId=crit_id, status=status, note=note))
+        items.append(
+            ProgressItem(
+                criterionId=crit_id,
+                name=c.name,
+                status=status,
+                note=note,
+            )
+        )
 
     return ProgressSummary(
         groupId=group_id,
@@ -288,7 +296,10 @@ def detect_and_list_issues(
                     "status": "Sin resolver",
                     "sourceEventId": source_id,
                 }
-                db[ISSUES_COLLECTION].insert_one(new_issue)
+                try:
+                    db[ISSUES_COLLECTION].insert_one(new_issue)
+                except DuplicateKeyError:
+                    continue
 
                 # Emit queue event
                 queue_event = create_queue_event(

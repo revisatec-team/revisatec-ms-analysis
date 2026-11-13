@@ -569,6 +569,8 @@ components:
             properties:
               criterionId:
                 type: string
+              name:
+                type: string
               status:
                 type: string
                 enum:
