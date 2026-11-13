@@ -2,7 +2,26 @@
 import time
 from typing import Optional
 from fastapi import HTTPException
+from pymongo.errors import DuplicateKeyError
 from app.db.cosmos import get_database, COURSE_SETTINGS_COLLECTION
+
+
+def _upsert_course_settings(course_id: int, fields: dict) -> None:
+    """Upsert course settings document, retrying without upsert if a concurrent insert caused DuplicateKeyError."""
+    db = get_database()
+    update_doc = {"courseId": course_id, **fields}
+    try:
+        db[COURSE_SETTINGS_COLLECTION].update_one(
+            {"courseId": course_id},
+            {"$set": update_doc},
+            upsert=True,
+        )
+    except DuplicateKeyError:
+        db[COURSE_SETTINGS_COLLECTION].update_one(
+            {"courseId": course_id},
+            {"$set": update_doc},
+            upsert=False,
+        )
 from app.models.course_settings import (
     Rubric,
     Instructions,
@@ -47,11 +66,7 @@ def update_rubric(course_id: int, rubric_input: Rubric) -> Rubric:
         "interpretationStatus": status,
     }
 
-    db[COURSE_SETTINGS_COLLECTION].update_one(
-        {"courseId": course_id},
-        {"$set": {"courseId": course_id, "rubric": rubric_data}},
-        upsert=True,
-    )
+    _upsert_course_settings(course_id, {"rubric": rubric_data})
     return Rubric(**rubric_data)
 
 
@@ -69,11 +84,7 @@ def update_instructions(course_id: int, instructions_input: Instructions) -> Ins
     db = get_database()
     instructions_data = {"text": instructions_input.text}
 
-    db[COURSE_SETTINGS_COLLECTION].update_one(
-        {"courseId": course_id},
-        {"$set": {"courseId": course_id, "instructions": instructions_data}},
-        upsert=True,
-    )
+    _upsert_course_settings(course_id, {"instructions": instructions_data})
     return Instructions(**instructions_data)
 
 
@@ -97,9 +108,5 @@ def update_scraping_config(course_id: int, config_input: ScrapingConfig) -> Scra
         "nextRunAt": next_run_at,
     }
 
-    db[COURSE_SETTINGS_COLLECTION].update_one(
-        {"courseId": course_id},
-        {"$set": {"courseId": course_id, "scrapingConfig": config_data}},
-        upsert=True,
-    )
+    _upsert_course_settings(course_id, {"scrapingConfig": config_data})
     return ScrapingConfig(**config_data)

@@ -22,46 +22,50 @@ from app.services.queue_publisher import get_publisher, create_queue_event
 logger = logging.getLogger(__name__)
 
 
+def _generate_ai_feedback(analysis) -> str:
+    criteria = analysis.criteria
+    if criteria:
+        sorted_criteria = sorted(criteria, key=lambda c: c.percent, reverse=True)
+        best = sorted_criteria[0]
+        worst = sorted_criteria[-1]
+        return (
+            f"El grupo obtiene {int(round(analysis.score))}/100. "
+            f"Fortaleza: {best.name} ({best.percent}%). "
+            f"A mejorar: {worst.name} ({worst.percent}%)."
+        )
+    return f"El grupo obtiene {int(round(analysis.score))}/100."
+
+
 def get_or_create_feedback(group_id: int) -> Feedback:
-    """Retrieve existing feedback or generate an AI draft."""
+    """Retrieve existing feedback (frozen if published, recalculated if draft) or generate an AI draft."""
     course_id = get_course_id_for_group(group_id)
     get_course_settings_or_404(course_id)
 
     db = get_database()
     doc = db[FEEDBACK_COLLECTION].find_one({"groupId": group_id})
-    if doc and doc.get("ai") is not None:
+
+    # Si está published, no recalcular nada
+    if doc and doc.get("status") == "published":
         return Feedback(
             groupName=doc.get("groupName") or get_group_name(group_id),
             deliveryTitle=doc.get("deliveryTitle", "Entrega actual"),
             score=doc.get("score"),
             ai=doc.get("ai"),
             professor=doc.get("professor", ""),
-            status=doc.get("status", "draft"),
+            status="published",
             publishedAt=doc.get("publishedAt"),
         )
 
-    # Generate draft using rules from docs/reglas-rubrica.md
+    # Si no existe o su status es "draft", recalcular score y ai
     analysis = get_group_analysis(group_id)
-    criteria = analysis.criteria
-
-    if criteria:
-        sorted_criteria = sorted(criteria, key=lambda c: c.percent, reverse=True)
-        best = sorted_criteria[0]
-        worst = sorted_criteria[-1]
-        ai_text = (
-            f"El grupo obtiene {int(round(analysis.score))}/100. "
-            f"Fortaleza: {best.name} ({best.percent}%). "
-            f"A mejorar: {worst.name} ({worst.percent}%)."
-        )
-    else:
-        ai_text = f"El grupo obtiene {int(round(analysis.score))}/100."
-
+    ai_text = _generate_ai_feedback(analysis)
     now_ms = int(time.time() * 1000)
-    group_name = get_group_name(group_id)
+
+    group_name = doc.get("groupName") if doc and doc.get("groupName") else get_group_name(group_id)
     delivery_title = doc.get("deliveryTitle", "Entrega actual") if doc else "Entrega actual"
     professor = doc.get("professor", "") if doc else ""
-    status = doc.get("status", "draft") if doc else "draft"
-    published_at = doc.get("publishedAt") if doc else None
+    status = "draft"
+    published_at = None
 
     draft_doc = {
         "groupId": group_id,
@@ -93,28 +97,50 @@ def get_or_create_feedback(group_id: int) -> Feedback:
 
 
 def update_feedback(group_id: int, feedback_input: FeedbackInput) -> Feedback:
-    """Update professor feedback."""
+    """Update professor feedback, creating it with AI draft if not existing."""
     course_id = get_course_id_for_group(group_id)
     get_course_settings_or_404(course_id)
 
     db = get_database()
     doc = db[FEEDBACK_COLLECTION].find_one({"groupId": group_id})
-    if not doc or doc.get("ai") is None:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Retroalimentación no encontrada para el grupo {group_id}",
-        )
-
     now_ms = int(time.time() * 1000)
-    update_data = {
-        "professor": feedback_input.professor,
-        "updatedAt": now_ms,
-    }
-    if feedback_input.ai is not None:
-        update_data["ai"] = feedback_input.ai
 
-    db[FEEDBACK_COLLECTION].update_one({"groupId": group_id}, {"$set": update_data})
-    doc.update(update_data)
+    if not doc or doc.get("ai") is None:
+        analysis = get_group_analysis(group_id)
+        ai_text = feedback_input.ai if feedback_input.ai is not None else _generate_ai_feedback(analysis)
+        group_name = doc.get("groupName") if doc and doc.get("groupName") else get_group_name(group_id)
+        delivery_title = doc.get("deliveryTitle", "Entrega actual") if doc else "Entrega actual"
+        status = "draft"
+        published_at = None
+
+        draft_doc = {
+            "groupId": group_id,
+            "courseId": course_id,
+            "groupName": group_name,
+            "deliveryTitle": delivery_title,
+            "score": float(analysis.score),
+            "ai": ai_text,
+            "professor": feedback_input.professor,
+            "status": status,
+            "updatedAt": now_ms,
+            "publishedAt": published_at,
+        }
+        db[FEEDBACK_COLLECTION].update_one(
+            {"groupId": group_id},
+            {"$set": draft_doc},
+            upsert=True,
+        )
+        doc = draft_doc
+    else:
+        update_data = {
+            "professor": feedback_input.professor,
+            "updatedAt": now_ms,
+        }
+        if feedback_input.ai is not None:
+            update_data["ai"] = feedback_input.ai
+
+        db[FEEDBACK_COLLECTION].update_one({"groupId": group_id}, {"$set": update_data})
+        doc.update(update_data)
 
     return Feedback(
         groupName=doc.get("groupName") or get_group_name(group_id),
@@ -138,6 +164,12 @@ def publish_feedback(group_id: int) -> Feedback:
         raise HTTPException(
             status_code=404,
             detail=f"Retroalimentación no encontrada para el grupo {group_id}",
+        )
+
+    if doc.get("status") == "published":
+        raise HTTPException(
+            status_code=409,
+            detail="La retroalimentación ya fue publicada",
         )
 
     professor_text = (doc.get("professor") or "").strip()
