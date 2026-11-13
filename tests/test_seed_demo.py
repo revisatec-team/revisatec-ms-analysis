@@ -200,3 +200,36 @@ def test_run_exits_when_group_has_no_github_users(monkeypatch):
 
     assert "5" in str(exc_info.value)
     assert "githubUser" in str(exc_info.value)
+
+
+def test_build_events_insufficient_authors_for_min_reviewers(capsys):
+    """build_events advierte en dry-run y termina con sys.exit en --apply si len(authors) <= minReviewers con PRs revisados."""
+    g = dict(
+        name="Grupo 7 - Insuficientes",
+        course=5,
+        commits=5,
+        weeks=[0, 1],
+        prs=2,
+        reviewed=2,
+        wip=0,
+        topics=["modulo"],
+        authors=["autor1", "autor2"],  # 2 autores con minReviewers=2
+    )
+    now_ms = 1700000000000
+
+    # 1. En dry-run (apply=False): imprime advertencia clara con grupo y curso
+    events = build_events(gid=7, g=g, min_reviewers=2, now_ms=now_ms, apply=False)
+    captured = capsys.readouterr().out
+    assert "Advertencia: grupo 7" in captured
+    assert "curso 5" in captured
+    assert "minReviewers=2" in captured
+    assert len(events) == 7
+
+    # 2. En apply (apply=True): termina con sys.exit si hay PRs revisados
+    with pytest.raises(SystemExit) as exc_info:
+        build_events(gid=7, g=g, min_reviewers=2, now_ms=now_ms, apply=True)
+
+    err_msg = str(exc_info.value)
+    assert "grupo 7" in err_msg
+    assert "curso 5" in err_msg
+    assert "minReviewers=2" in err_msg
