@@ -52,3 +52,10 @@ Los 10 eventos más recientes del grupo: `id`, `type`, `text` (mensaje), `author
 - Curso sin rúbrica configurada: 404 `{"error": "..."}`.
 - Grupo sin eventos: métricas en 0 y evidencia vacía.
 - Parámetros de paginación fuera de rango: 400.
+
+## 9. Limitaciones conocidas
+
+- **Progreso vs. puntaje:** `progress` es un promedio simple de las 3 métricas, mientras que `score` utiliza la suma ponderada según los pesos de la rúbrica.
+- **Deducción de métricas por nombre:** la métrica asignada a cada criterio de la rúbrica se deduce a partir de su nombre (palabras clave `revis`, `consist`/`constan`, y código por defecto).
+- **Consistencia temporal:** el cálculo de la consistencia depende de la fecha y hora en que se realiza la consulta (evalúa las últimas 4 semanas respecto al instante actual).
+- **Resolución de inconvenientes:** los inconvenientes detectados no se pueden marcar como resueltos (no existe endpoint ni flujo para cambiar el estado a `Resuelto`).
