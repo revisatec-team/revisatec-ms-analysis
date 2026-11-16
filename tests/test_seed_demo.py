@@ -137,12 +137,23 @@ def test_run_dry_run_with_mocked_httpx(monkeypatch, capsys):
                     {"githubUser": f"gh_user_{gid_str}_2"},
                 ]
             })
+        if "/groups/" in url:
+            gid_str = url.rstrip("/").split("/groups/")[1]
+            return FakeResponse({"id": int(gid_str), "name": f"Grupo MS1 {gid_str}"})
         raise ValueError(f"Unexpected url: {url}")
 
     monkeypatch.setattr(httpx, "get", fake_get)
     monkeypatch.setenv("APIM_KEY", "test-apim-key")
 
-    plan = run(apply=False)
+    original_names = {gid: g["name"] for gid, g in GROUPS.items()}
+    try:
+        plan = run(apply=False)
+        # El nombre de cada grupo se toma de MS1
+        for gid, g in GROUPS.items():
+            assert g["name"] == f"Grupo MS1 {gid}"
+    finally:
+        for gid, name in original_names.items():
+            GROUPS[gid]["name"] = name
 
     captured = capsys.readouterr().out
     assert "Modo: DRY-RUN (no escribe)" in captured
