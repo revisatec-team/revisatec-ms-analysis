@@ -35,22 +35,22 @@ DAY_MS = 86_400_000
 COURSES = {
     1: {
         "criteria": [("Calidad del modelo y consultas SQL", 40), ("Revisiones entre pares", 35), ("Consistencia del avance", 25)],
-        "instructions": "Priorizar el diseno del modelo relacional y la normalizacion. Senalar consultas sin indices y exigir revision cruzada de los scripts SQL antes de fusionar.",
+        "instructions": "Priorizar el diseño del modelo relacional y la normalización. Señalar consultas sin índices y exigir revisión cruzada de los scripts SQL antes de fusionar.",
         "frequency": "daily", "minReviewers": 1,
     },
     4: {
-        "criteria": [("Calidad del codigo", 45), ("Revisiones entre pares", 30), ("Consistencia del avance", 25)],
-        "instructions": "Evaluar la correccion del analizador y la cobertura de casos de prueba. Valorar commits pequenos y descriptivos.",
+        "criteria": [("Calidad del código", 45), ("Revisiones entre pares", 30), ("Consistencia del avance", 25)],
+        "instructions": "Evaluar la corrección del analizador y la cobertura de casos de prueba. Valorar commits pequeños y descriptivos.",
         "frequency": "weekly", "minReviewers": 1,
     },
     5: {
-        "criteria": [("Calidad de codigo y patrones de diseno", 40), ("Revisiones entre pares", 40), ("Consistencia del avance", 20)],
-        "instructions": "Verificar el uso justificado de patrones de diseno y la separacion de capas. Cada pull request requiere dos revisores.",
+        "criteria": [("Calidad de código y patrones de diseño", 40), ("Revisiones entre pares", 40), ("Consistencia del avance", 20)],
+        "instructions": "Verificar el uso justificado de patrones de diseño y la separación de capas. Cada pull request requiere dos revisores.",
         "frequency": "daily", "minReviewers": 2,
     },
     6: {
-        "criteria": [("Calidad de los entregables", 40), ("Revision de pares", 30), ("Constancia del equipo", 30)],
-        "instructions": "Revisar que los entregables del plan esten actualizados y que los riesgos tengan responsable y fecha. Valorar la constancia semanal.",
+        "criteria": [("Calidad de los entregables", 40), ("Revisión de pares", 30), ("Constancia del equipo", 30)],
+        "instructions": "Revisar que los entregables del plan estén actualizados y que los riesgos tengan responsable y fecha. Valorar la constancia semanal.",
         "frequency": "weekly", "minReviewers": 1,
     },
 }
@@ -58,21 +58,21 @@ COURSES = {
 # commits/prs: cantidades; weeks: semanas (0 = la mas reciente) con actividad; reviewed: PRs con revisores suficientes
 GROUPS = {
     1: dict(name="Grupo 1 - Sistema de Inventario", course=1, commits=18, weeks=[0, 1, 2, 3], prs=4, reviewed=4, wip=1,
-            topics=["tabla de productos", "consulta de existencias", "procedimiento de reabastecimiento", "indice por codigo de barras", "vista de movimientos", "disparador de auditoria"]),
-    5: dict(name="Grupo 2 - Gestion de Citas", course=1, commits=12, weeks=[0, 1, 3], prs=3, reviewed=2, wip=0,
-            topics=["modelo de pacientes", "consulta de agenda", "restriccion de horarios", "vista de citas pendientes", "script de datos iniciales"]),
-    4: dict(name="Grupo 1 - Analizador de Gramaticas", course=4, commits=15, weeks=[0, 1, 2, 3], prs=3, reviewed=3, wip=1,
-            topics=["tokenizador", "calculo de conjuntos primero", "tabla LL(1)", "manejo de errores sintacticos", "generador de arbol de derivacion"]),
-    6: dict(name="Grupo 2 - Interprete Funcional", course=4, commits=8, weeks=[0, 2], prs=2, reviewed=1, wip=2,
-            topics=["evaluador de expresiones", "cierres lexicos", "funciones de orden superior", "entorno de variables"]),
-    7: dict(name="Grupo 1 - Plataforma de Reservas", course=5, commits=20, weeks=[0, 1, 2, 3], prs=5, reviewed=5, wip=0,
-            topics=["patron repositorio", "servicio de reservas", "controlador REST", "patron fabrica de notificaciones", "validacion de disponibilidad", "capa de persistencia"]),
+            topics=["tabla de productos", "consulta de existencias", "procedimiento de reabastecimiento", "índice por código de barras", "vista de movimientos", "disparador de auditoría"]),
+    5: dict(name="Grupo 2 - Gestión de Citas", course=1, commits=12, weeks=[0, 1, 3], prs=3, reviewed=2, wip=1,
+            topics=["modelo de pacientes", "consulta de agenda", "restricción de horarios", "vista de citas pendientes", "script de datos iniciales"]),
+    4: dict(name="Grupo 1 - Analizador de Gramáticas", course=4, commits=15, weeks=[0, 1, 2, 3], prs=3, reviewed=3, wip=1,
+            topics=["tokenizador", "cálculo de conjuntos primero", "tabla LL(1)", "manejo de errores sintácticos", "generador de árbol de derivación"]),
+    6: dict(name="Grupo 2 - Intérprete Funcional", course=4, commits=8, weeks=[0, 2], prs=2, reviewed=1, wip=2,
+            topics=["evaluador de expresiones", "cierres léxicos", "funciones de orden superior", "entorno de variables"]),
+    7: dict(name="Grupo 1 - Plataforma de Reservas", course=5, commits=20, weeks=[0, 1, 2, 3], prs=5, reviewed=5, wip=1,
+            topics=["patrón repositorio", "servicio de reservas", "controlador REST", "patrón fábrica de notificaciones", "validación de disponibilidad", "capa de persistencia"]),
     8: dict(name="Grupo 2 - App de Notificaciones", course=5, commits=14, weeks=[0, 1, 2], prs=4, reviewed=3, wip=1,
-            topics=["patron observador", "canal de correo", "plantillas de mensaje", "cola de envio", "preferencias de usuario"]),
-    9: dict(name="Grupo 1 - Plan de Proyecto ERP", course=6, commits=10, weeks=[0, 1, 3], prs=2, reviewed=2, wip=0,
-            topics=["cronograma del proyecto", "matriz de interesados", "estimacion de costos", "plan de comunicaciones"]),
-    10: dict(name="Grupo 2 - Gestion de Riesgos", course=6, commits=6, weeks=[1, 3], prs=2, reviewed=0, wip=1,
-            topics=["registro de riesgos", "matriz de probabilidad e impacto", "plan de mitigacion", "seguimiento de riesgos"]),
+            topics=["patrón observador", "canal de correo", "plantillas de mensaje", "cola de envío", "preferencias de usuario"]),
+    9: dict(name="Grupo 1 - Plan de Proyecto ERP", course=6, commits=10, weeks=[0, 1, 3], prs=2, reviewed=2, wip=1,
+            topics=["cronograma del proyecto", "matriz de interesados", "estimación de costos", "plan de comunicaciones"]),
+    10: dict(name="Grupo 2 - Gestión de Riesgos", course=6, commits=6, weeks=[1, 3], prs=2, reviewed=0, wip=1,
+            topics=["registro de riesgos", "matriz de probabilidad e impacto", "plan de mitigación", "seguimiento de riesgos"]),
 }
 
 
@@ -148,6 +148,17 @@ def build_events(gid, g, min_reviewers, now_ms, apply=False):
     return events
 
 
+def fetch_ms1_group_name(group_id, key):
+    """Nombre del grupo en MS1, para que MS2 muestre exactamente el mismo."""
+    try:
+        r = httpx.get(f"{APIM_BASE}/groups/{group_id}", headers={"Ocp-Apim-Subscription-Key": key}, timeout=120)
+        r.raise_for_status()
+        return (r.json().get("name") or "").strip()
+    except Exception as e:  # sin nombre de MS1 se conserva el del seed
+        print(f"Aviso: no se pudo leer el nombre del grupo {group_id} en MS1 ({e}); se usa el del seed.")
+        return ""
+
+
 def run(apply, ms1_events=None, ms1_members=None):
     key = os.environ.get("APIM_KEY", "")
     now_ms = int(time.time() * 1000)
@@ -162,6 +173,10 @@ def run(apply, ms1_events=None, ms1_members=None):
 
     if ms1_members is None:
         ms1_members = {gid: fetch_ms1_members(gid, key) for gid in GROUPS}
+        for gid in GROUPS:
+            name = fetch_ms1_group_name(gid, key)
+            if name:
+                GROUPS[gid]["name"] = name
 
     for gid in GROUPS:
         authors = ms1_members.get(gid) or []
