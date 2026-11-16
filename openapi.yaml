@@ -221,6 +221,35 @@ paths:
                       $ref: '#/components/schemas/CriterionCompliance'
         '404':
           $ref: '#/components/responses/NotFound'
+  /groups/{id}/contributions:
+    parameters:
+    - $ref: '#/components/parameters/id'
+    get:
+      tags:
+      - Group analysis
+      summary: Aporte de cada integrante del grupo
+      description: Commits y PR escritos, PR de otros revisados y porcentaje de los commits del grupo,
+        calculados con los eventos del repositorio. githubUser coincide con el de los integrantes de MS1.
+      operationId: getGroupContributions
+      responses:
+        '200':
+          description: Aporte por integrante, de mayor a menor cantidad de commits
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GroupContributions'
+              example:
+                groupId: 7
+                totalCommits: 20
+                totalPrs: 5
+                items:
+                - githubUser: nataraya
+                  commits: 7
+                  prs: 2
+                  reviews: 4
+                  percent: 35
+        '404':
+          $ref: '#/components/responses/NotFound'
   /groups/{id}/feedback:
     parameters:
     - $ref: '#/components/parameters/id'
@@ -716,3 +745,33 @@ components:
           type: string
         professor:
           type: string
+    MemberContribution:
+      type: object
+      required: [githubUser, commits, prs, reviews, percent]
+      properties:
+        githubUser:
+          type: string
+        commits:
+          type: integer
+        prs:
+          type: integer
+        reviews:
+          type: integer
+          description: PR de otros integrantes que revisó
+        percent:
+          type: integer
+          description: Porcentaje de los commits del grupo
+    GroupContributions:
+      type: object
+      required: [groupId, totalCommits, totalPrs, items]
+      properties:
+        groupId:
+          type: integer
+        totalCommits:
+          type: integer
+        totalPrs:
+          type: integer
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/MemberContribution'
