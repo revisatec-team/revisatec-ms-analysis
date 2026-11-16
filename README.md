@@ -1,178 +1,136 @@
-# RevisaTEC
+# RevisaTEC MS2 - Rúbrica, IA y Análisis (`revisatec-ms-analysis`)
 
-Plataforma de revisión de código entre pares para proyectos grupales de cursos de programación del TEC.
+Microservicio de análisis de código, rúbricas, retroalimentación e inconvenientes para la plataforma **RevisaTEC**. Desarrollado con **Python 3.12**, **FastAPI** y **Azure Cosmos DB** (API para MongoDB), con integración asíncrona hacia **Azure Storage Queue** para notificaciones (MS3).
 
-**Aplicación desplegada:** https://green-ocean-067c41510.3.azurestaticapps.net
+---
 
-> **Estado:** Fase II (backend distribuido). El frontend consume tres microservicios reales en Azure App Service, publicados únicamente a través de Azure API Management (APIM). Las notificaciones llegan en tiempo real mediante Azure Web PubSub.
+## 1. Arquitectura y Modelo de Datos
 
-## Descripción
+El microservicio utiliza Azure Cosmos DB (API para MongoDB) para almacenar configuraciones y eventos de manera documental:
 
-RevisaTEC se conecta al repositorio de GitHub/GitLab de cada equipo y exige que todo cambio pase por revisión de un compañero antes de fusionarse a la rama principal. Calcula un índice de contribución individual objetivo y se lo muestra al profesor en un dashboard.
+- **`course_settings`**: Configuración unificada por curso (`courseId` único). Almacena `rubric` (criterios y pesos), `instructions` (indicaciones para el análisis) y `scrapingConfig` (frecuencia y revisores mínimos).
+- **`github_events`**: Historial de commits y pull requests de cada grupo (`groupId`, `createdAt`).
+- **`feedback`**: Propuesta de retroalimentación generada por reglas e versión editada/publicada por el profesor (`groupId` único).
+- **`issues`**: Inconvenientes detectados automáticamente en commits (`groupId`, `date`, `sourceEventId`).
+- **`direct_reviews`**: Revisiones directas registradas fuera del flujo habitual (`groupId`, `date`).
+- **`report_checklist`**: Hitos y entregas programadas por grupo (`groupId`).
 
-## Problema que resuelve
+> **Reglas del Análisis**: El análisis (`/groups/{id}/analysis`, `/progress-summary`, `/criteria`) se calcula dinámicamente al vuelo a partir de `github_events` y la rúbrica del curso; no se almacena en una colección separada.
 
-Hoy el profesor solo ve el resultado final de un repositorio, sin visibilidad de si hubo control de calidad entre compañeros ni de cuánto aportó cada estudiante. Esto genera notas grupales injustas, deja pasar inconvenientes de último momento (commits de prueba, entregas fuera de plazo) y priva a los estudiantes de practicar el code review.
+---
 
-## Funcionalidades principales
+## 2. Variables de Entorno
 
-- Inicio de sesión con correo institucional (solo cuentas terminadas en `@estudiantec.cr` o `@itcr`) o con Google (OAuth2), con redirección según el rol.
-- Configuración de rúbrica, indicaciones para la IA y frecuencia de análisis por curso.
-- Dashboard del profesor con métricas por grupo, próximas entregas e inconvenientes.
-- CRUD de grupos y de calendario de hitos, con búsqueda y paginación.
-- Detalle de grupo con nota estimada, evidencia de PRs/commits y contribución por estudiante.
-- Retroalimentación: propuesta de la IA (reglas deterministas) y versión editable del profesor, con publicación a los estudiantes.
-- Detección de inconvenientes (commits de prueba).
-- Panel del estudiante: su aporte, retroalimentación publicada y calendario.
-- **Notificaciones en tiempo real:** al publicarse una retroalimentación o detectarse un inconveniente, la campana se actualiza sin recargar. El historial se consulta y se marca como leído.
-- Fechas en Epoch (milisegundos) desde el backend; el frontend las muestra en la zona horaria del dispositivo.
-- Manejo de estados HTTP con mensajes claros (200, 201, 400, 401, 404).
-- Tema claro/oscuro persistente y diseño responsive (escritorio, tablet y móvil).
+Crear un archivo `.env` en la raíz a partir de `.env.example`:
 
-## Arquitectura (Fase II)
-
-```mermaid
-flowchart LR
-    U[Profesor / Estudiante] --> FE[Frontend React<br/>Azure Static Web Apps]
-    FE -->|HTTPS + clave de suscripción| APIM[Azure API Management]
-    APIM -->|mTLS| MS1[MS1 · Gestión académica<br/>Spring Boot hexagonal]
-    APIM -->|mTLS| MS2[MS2 · Rúbrica IA y reportes<br/>Python / FastAPI]
-    APIM -->|mTLS| MS3[MS3 · Notifications<br/>Node.js / Express]
-    MS1 --> SQL[(Azure SQL)]
-    MS2 --> COS[(Cosmos DB<br/>API Mongo)]
-    MS2 -->|publica evento| Q[(Azure Queue Storage)]
-    Q -->|consume| MS3
-    MS3 --> TBL[(Azure Table Storage)]
-    MS3 -->|emite| WPS((Azure Web PubSub))
-    WPS -.->|WebSocket directo con token| FE
+```bash
+cp .env.example .env
 ```
 
-- **Punto único de entrada:** todo el tráfico HTTP pasa por APIM; los App Services solo aceptan llamadas con el certificado de cliente de APIM (mTLS).
-- **Tiempo real:** el frontend pide un token temporal a `GET /notifications/realtime-token` (por APIM) y abre un WebSocket directo a Azure Web PubSub.
-- **Eventos:** MS2 publica `FEEDBACK_PUBLISHED` e `ISSUE_DETECTED` en la cola `notificaciones`; MS3 los guarda en el historial y los emite en vivo.
-- **Destinatarios:** las notificaciones se emiten a todos los clientes conectados (profesor y estudiantes). El historial es compartido, sin filtro por usuario.
+| Variable | Descripción | Valor por Defecto / Ejemplo |
+|---|---|---|
+| `COSMOS_CONNECTION_STRING` | Cadena de conexión de Azure Cosmos DB (API Mongo) | `mongodb://localhost:27017` |
+| `COSMOS_DB_NAME` | Nombre de la base de datos documental | `revisatec` |
+| `QUEUE_CONNECTION_STRING` | Cadena de conexión de Azure Storage Queue | `DefaultEndpointsProtocol=https;AccountName=...` |
+| `QUEUE_NAME` | Nombre de la cola de notificaciones | `notificaciones` |
+| `PORT` | Puerto de escucha del servicio | `8000` |
 
-El diagrama completo y los contratos están en `docs/`.
+---
 
-## Microservicios
+## 3. Instalación y Ejecución Local
 
-| Servicio | Repositorio | Stack | Almacenamiento | Rutas principales |
+### Prerrequisitos
+- Python 3.12+
+- Servidor MongoDB o Azure Cosmos DB
+
+### Pasos
+
+1. **Crear y activar entorno virtual**:
+   ```bash
+   python -m venv .venv
+   # Windows:
+   .venv\Scripts\activate
+   # Linux / macOS:
+   source .venv/bin/activate
+   ```
+
+2. **Instalar dependencias**:
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+3. **Cargar datos iniciales (Seed idempotente)**:
+   ```bash
+   python scripts/seed.py
+   ```
+
+4. **Iniciar el servidor de desarrollo**:
+   ```bash
+   python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
+   ```
+
+La documentación Swagger interactiva queda disponible en `http://localhost:8000/docs`.
+
+---
+
+## 4. Tabla de Endpoints
+
+Todos los errores retornan el formato `{ "error": "mensaje" }`. Todas las fechas se intercambian en Epoch (milisegundos). Las listas siguen la convención `{ totalRecords, page, pageSize, items }`.
+
+| Método | Endpoint | Descripción | Respuesta Exitosa | Códigos de Error |
 |---|---|---|---|---|
-| MS1 · Gestión académica | `revisatec-ms-core` | Spring Boot (hexagonal) | Azure SQL | `/courses`, `/groups`, `/calendar/events` |
-| MS2 · Rúbrica IA y reportes | `revisatec-ms-analysis` | Python / FastAPI | Cosmos DB (API Mongo) | `/courses/{id}/rubric`, `/groups/{id}/analysis`, `/feedback`, `/issues`, `/report` |
-| MS3 · Notifications | `revisatec-ms-notifications` | Node.js / Express | Queue + Table Storage | `/notifications`, `/notifications/realtime-token` |
+| `GET` | `/health` | Estado del microservicio | `200 OK` | - |
+| `GET` | `/courses/{id}/rubric` | Obtener rúbrica del curso | `200 OK` | `404 Not Found` |
+| `PUT` | `/courses/{id}/rubric` | Guardar o actualizar rúbrica (pesos deben sumar 100) | `200 OK` | `400 Bad Request`, `404 Not Found` |
+| `GET` | `/courses/{id}/instructions` | Obtener indicaciones para la IA | `200 OK` | `404 Not Found` |
+| `PUT` | `/courses/{id}/instructions` | Actualizar indicaciones (máx. 1000 caracteres) | `200 OK` | `400 Bad Request`, `404 Not Found` |
+| `GET` | `/courses/{id}/scraping-config` | Obtener configuración de scraping | `200 OK` | `404 Not Found` |
+| `PUT` | `/courses/{id}/scraping-config` | Actualizar scraping (recalcula `nextRunAt`) | `200 OK` | `400 Bad Request`, `404 Not Found` |
+| `GET` | `/groups/{id}/analysis` | Puntaje total, progreso, criterios y 10 evidencias recientes | `200 OK` | `404 Not Found` |
+| `GET` | `/groups/{id}/progress-summary` | Síntesis de avance por criterio (`on_track`, `at_risk`, `delayed`) | `200 OK` | `404 Not Found` |
+| `GET` | `/groups/{id}/criteria` | Nivel de cumplimiento (`met`, `partial`, `not_met`) y puntajes | `200 OK` | `404 Not Found` |
+| `GET` | `/groups/{id}/issues` | Inconvenientes detectados (paginado: `page`, `pageSize`) | `200 OK` | `400 Bad Request`, `404 Not Found` |
+| `GET` | `/groups/{id}/feedback` | Retroalimentación (IA borrador o versión profesor) | `200 OK` | `404 Not Found` |
+| `PUT` | `/groups/{id}/feedback` | Guardar edición del profesor | `200 OK` | `400 Bad Request`, `404 Not Found` |
+| `POST` | `/groups/{id}/feedback/publish` | Publicar retroalimentación y emitir evento a la cola | `200 OK` | `400 Bad Request`, `404 Not Found` |
+| `GET` | `/groups/{id}/direct-reviews` | Listar revisiones directas del grupo (paginado) | `200 OK` | `400 Bad Request`, `404 Not Found` |
+| `POST` | `/groups/{id}/direct-reviews` | Registrar revisión directa | `201 Created` | `400 Bad Request`, `404 Not Found` |
+| `GET` | `/groups/{id}/report` | Lista de hitos y estado del reporte del grupo | `200 OK` | `404 Not Found` |
 
-## Stack tecnológico
+---
 
-| Capa | Tecnología |
-|---|---|
-| Frontend | React 19 + Vite + React Router |
-| Backend | Spring Boot, FastAPI y Node.js/Express en Azure App Service |
-| Gateway | Azure API Management (Consumption) |
-| Almacenamiento | Azure SQL, Cosmos DB (API Mongo), Queue Storage y Table Storage |
-| Tiempo real | Azure Web PubSub |
-| Hosting del front | Azure Static Web Apps (HTTPS) |
-| CI/CD | GitHub Actions (4 repositorios; versionado por tag en el front) |
-| Autenticación | Google OAuth2 y correo institucional; clave de suscripción en APIM |
-| Pruebas de API | Postman + Newman |
+## 5. Integración con Azure Storage Queue (MS3)
 
-## Convenciones de datos
+Al ocurrir eventos clave, el microservicio publica mensajes JSON plano (UTF-8, sin codificación base64) en la cola `notificaciones`:
 
-- Fechas: Epoch en milisegundos (UTC) en todo intercambio con el backend.
-- Listas: `{ totalRecords, page, pageSize, items }` (MS3 devuelve la lista en `data`).
-- Errores: `{ "error": "mensaje" }` con códigos 200, 201, 400, 401 y 404.
+### Estructura del Mensaje
+```json
+{
+  "eventId": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
+  "type": "FEEDBACK_PUBLISHED",
+  "courseId": 1,
+  "groupId": 1,
+  "title": "Retroalimentación publicada",
+  "message": "Se publicó la retroalimentación de Grupo 1",
+  "createdAt": 1793000000000,
+  "source": "ms-analysis"
+}
+```
 
-## Seguridad
+- **`FEEDBACK_PUBLISHED`**: Emitido cuando el profesor publica la retroalimentación (`POST /groups/{id}/feedback/publish`). Si la cola falla, la publicación se preserva en base de datos y la respuesta indica `notified: false`.
+- **`ISSUE_DETECTED`**: Emitido cuando se detectan nuevos commits con palabras sueltas de prueba (`test`, `prueba`, `wip`, `asdf`, `tmp`).
 
-- El frontend solo conoce la URL de APIM; las URLs `*.azurewebsites.net` no se usan ni se exponen.
-- Las llamadas llevan el header `Ocp-Apim-Subscription-Key`. Sin clave, APIM responde 401.
-- La clave y las cadenas de conexión **no se guardan en el código**: se definen como variables de entorno (`.env.local` en desarrollo) y como secretos de GitHub Actions en el despliegue. `.env.local` está excluido por Git.
+### Script para Envío de Evento de Prueba
+```bash
+python scripts/send_test_event.py --type FEEDBACK_PUBLISHED --course-id 1 --group-id 1
+```
 
-## Instalación y uso
+---
+
+## 6. Pruebas Automatizadas
+
+La suite de pruebas utiliza `pytest` y `mongomock`:
 
 ```bash
-git clone https://github.com/Crisaraya21/revisatec.git
-cd revisatec
-npm install
-npm run dev
+pytest -v
 ```
-
-Variables de entorno (`.env.local`):
-
-```
-VITE_API_BASE_URL=<url base de Azure API Management, incluyendo /revisatec>
-VITE_API_SUBSCRIPTION_KEY=<llave de suscripción de APIM>
-VITE_GOOGLE_CLIENT_ID=<client ID de OAuth2 de Google>
-```
-
-Los valores reales se solicitan al equipo y no se suben al repositorio. En el despliegue se configuran como secretos de GitHub Actions (`VITE_API_BASE_URL`, `VITE_API_SUBSCRIPTION_KEY`, `VITE_GOOGLE_CLIENT_ID`).
-
-## CI/CD y versionado
-
-En cada push a `main`, GitHub Actions ejecuta lint y build y, si pasan, despliega a Azure Static Web Apps. En cada despliegue se crea un tag de Git cuya versión se muestra en el pie de la aplicación. Cada microservicio tiene su propio repositorio y su pipeline de compilación, pruebas y despliegue a Azure App Service.
-
-## Pruebas de API
-
-Cada servicio incluye su colección de Postman (carpeta `postman`) y su contrato `openapi.yaml`. Las colecciones se ejecutan contra APIM con Newman:
-
-```bash
-newman run <coleccion>.postman_collection.json -e <entorno>.postman_environment.json
-```
-
-Resultados de MS1: 29 requests, 56 assertions, 0 fallos. MS3: 29 pruebas automáticas aprobadas más su colección Postman. El detalle está en `docs/` (reporte consolidado de pruebas).
-
-## Equipo
-
-- **Marlon Fabian Aragón Arce** — UX/UI, frontend, MS3 (notificaciones y tiempo real) y video.
-- **Cristopher Daniel Araya Vega** — Infraestructura, APIM, mTLS, CI/CD y MS1.
-- **Leiner Josué Aguilar González** — Documentación, pruebas y MS2.
-
-## Capturas de pantalla
-
-| | |
-|---|---|
-| **Login** (correo institucional o Google) | **Crear grupo** (modal) |
-| ![Login](./screenshots/01-login.png) | ![Crear grupo](./screenshots/03-crear-grupo.png) |
-| **Calendario** | **Inconvenientes** |
-| ![Calendario](./screenshots/05-calendario.png) | ![Inconvenientes](./screenshots/06-inconvenientes.png) |
-| **Detalle de grupo** | **Retroalimentación** |
-| ![Detalle de grupo](./screenshots/11-detalle-grupo.png) | ![Retroalimentación](./screenshots/07-retroalimentacion.png) |
-| **Panel del estudiante** | **Mi grupo — modo oscuro** |
-| ![Panel del estudiante](./screenshots/08-panel-estudiante.png) | ![Mi grupo modo oscuro](./screenshots/09-mi-grupo-modo-oscuro.png) |
-| **Calendario — vista móvil** | |
-| ![Calendario móvil](./screenshots/10-calendario-movil.png) | |
-
-## Estructura del repositorio
-
-```
-revisatec/
-├── .github/workflows/      # CI/CD: lint, build y despliegue a Azure Static Web Apps
-├── docs/                   # Arquitectura, contratos OpenAPI, reportes de pruebas y seguridad
-├── public/                 # Assets estáticos y staticwebapp.config.json
-├── screenshots/            # Capturas usadas en este README
-├── src/
-│   ├── components/         # Componentes reutilizables
-│   ├── context/            # AuthContext, ThemeContext
-│   ├── hooks/              # usePaginatedList
-│   ├── lib/                # apiClient.js: cliente de la API (APIM)
-│   ├── pages/              # Login, Groups, GroupDetail, Rubric, Calendar, Feedback,
-│   │                       #   Issues, StudentDashboard, StudentFeedback, StudentGroup
-│   ├── App.jsx
-│   ├── main.jsx
-│   └── theme.css
-├── eslint.config.js
-├── index.html
-├── package.json
-├── vite.config.js
-└── README.md
-```
-
-## Créditos
-
-- [React](https://react.dev/), [Vite](https://vitejs.dev/), [React Router](https://reactrouter.com/)
-- [Azure Static Web Apps](https://azure.microsoft.com/products/app-service/static/), [Azure API Management](https://azure.microsoft.com/products/api-management/), [Azure Web PubSub](https://azure.microsoft.com/products/web-pubsub/)
-- [GitHub Actions](https://github.com/features/actions), [Postman](https://www.postman.com/), [Figma](https://www.figma.com/), [Draw.io](https://www.drawio.com/)
-
-## Licencia
-
-Proyecto académico — Instituto Tecnológico de Costa Rica (TEC San Carlos), curso IC-6821 Diseño de Software, profesor Marcos Rodríguez, II semestre 2026.
