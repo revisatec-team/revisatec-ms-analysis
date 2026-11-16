@@ -110,6 +110,32 @@ def fetch_ms1_members(group_id, key):
     return list(dict.fromkeys(users))
 
 
+# Reparto del trabajo por grupo (fracción de commits de cada integrante, del que más aporta al que menos).
+# Es distinto en cada grupo para que el aporte individual sea realista y no siempre parejo.
+SHARE_PATTERNS = [
+    [0.50, 0.30, 0.20], [0.45, 0.35, 0.20], [0.60, 0.25, 0.15], [0.40, 0.38, 0.22],
+    [0.55, 0.30, 0.15], [0.50, 0.33, 0.17], [0.48, 0.37, 0.15], [0.70, 0.20, 0.10],
+]
+
+
+def assign_authors(gid, authors, count, rng):
+    """Lista de `count` autores con un reparto desigual y estable por grupo."""
+    if not authors or count <= 0:
+        return []
+    pattern = SHARE_PATTERNS[gid % len(SHARE_PATTERNS)]
+    shares = (pattern + [0.1] * len(authors))[:len(authors)]
+    total = sum(shares)
+    exact = [count * s / total for s in shares]
+    counts = [int(x) for x in exact]
+    for i in sorted(range(len(authors)), key=lambda i: exact[i] - counts[i], reverse=True)[:count - sum(counts)]:
+        counts[i] += 1
+    order = authors[:]
+    rng.shuffle(order)  # quién aporta más cambia de un grupo a otro
+    result = [a for a, n in zip(order, counts) for _ in range(n)]
+    rng.shuffle(result)
+    return result
+
+
 def build_events(gid, g, min_reviewers, now_ms, apply=False):
     if len(g["authors"]) <= min_reviewers:
         warning_msg = (
@@ -124,6 +150,8 @@ def build_events(gid, g, min_reviewers, now_ms, apply=False):
 
     rng = random.Random(gid)
     prefixes = ["feat", "fix", "docs", "refactor", "chore"]
+    commit_authors = assign_authors(gid, g["authors"], g["commits"], rng)
+    pr_authors = assign_authors(gid, g["authors"], g["prs"], rng)
     events = []
     for i in range(g["commits"]):
         week = g["weeks"][i % len(g["weeks"])]
@@ -134,14 +162,14 @@ def build_events(gid, g, min_reviewers, now_ms, apply=False):
         else:
             msg = f"{prefixes[i % len(prefixes)]}: {topic}"
         events.append({"id": f"g{gid}_c{i + 1:02d}", "groupId": gid, "type": "commit",
-                       "author": g["authors"][i % len(g["authors"])], "reviewers": [], "message": msg,
+                       "author": commit_authors[i], "reviewers": [], "message": msg,
                        "createdAt": now_ms - days * DAY_MS - rng.randint(0, 40_000_000)})
     for j in range(g["prs"]):
         week = g["weeks"][j % len(g["weeks"])]
         days = week * 7 + rng.randint(1, 6)
-        author = g["authors"][j % len(g["authors"])]
+        author = pr_authors[j]
         others = [a for a in g["authors"] if a != author]
-        reviewers = others[:max(min_reviewers, 1)] if j < g["reviewed"] else []
+        reviewers = rng.sample(others, min(len(others), max(min_reviewers, 1))) if j < g["reviewed"] else []
         events.append({"id": f"g{gid}_pr{j + 1:02d}", "groupId": gid, "type": "pr", "author": author,
                        "reviewers": reviewers, "message": f"PR #{j + 1}: {g['topics'][j % len(g['topics'])]}",
                        "createdAt": now_ms - days * DAY_MS - rng.randint(0, 40_000_000)})
