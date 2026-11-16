@@ -21,6 +21,21 @@ class Evidence(BaseModel):
     when: int   # Epoch ms
 
 
+class MemberContribution(BaseModel):
+    githubUser: str
+    commits: int
+    prs: int
+    reviews: int
+    percent: int  # porcentaje de los commits del grupo
+
+
+class GroupContributions(BaseModel):
+    groupId: int
+    totalCommits: int
+    totalPrs: int
+    items: List[MemberContribution]
+
+
 class Analysis(BaseModel):
     score: float
     progress: int

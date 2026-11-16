@@ -4,6 +4,7 @@ from app.models.analysis import (
     Analysis,
     ProgressSummary,
     GroupCriteriaResponse,
+    GroupContributions,
     Issue,
 )
 from app.models.common import PaginatedResponse
@@ -50,3 +51,13 @@ def list_group_issues(
 ):
     """Inconvenientes detectados (paginado)."""
     return service.detect_and_list_issues(group_id=id, page=page, page_size=pageSize)
+
+
+@router.get(
+    "/contributions",
+    response_model=GroupContributions,
+    operation_id="getGroupContributions",
+)
+def get_group_contributions(id: int = Path(..., description="ID del grupo")):
+    """Aporte de cada integrante (commits, PR, revisiones y porcentaje de commits)."""
+    return service.get_group_contributions(group_id=id)

@@ -23,6 +23,8 @@ from app.models.analysis import (
     CriterionCompliance,
     GroupCriteriaResponse,
     Issue,
+    MemberContribution,
+    GroupContributions,
 )
 from app.models.common import PaginatedResponse
 from app.services.queue_publisher import get_publisher, create_queue_event
@@ -345,3 +347,49 @@ def detect_and_list_issues(
         pageSize=page_size,
         items=items,
     )
+
+def get_group_contributions(group_id: int) -> GroupContributions:
+    """Aporte de cada integrante a partir de los eventos del repositorio.
+
+    commits y prs son los que cada persona escribió; reviews, los PR de otros que revisó;
+    percent es su porcentaje de los commits del grupo (suma 100 salvo por redondeo).
+    """
+    course_id = get_course_id_for_group(group_id)
+    get_course_settings_or_404(course_id)
+
+    db = get_database()
+    events = list(db[GITHUB_EVENTS_COLLECTION].find({"groupId": group_id}))
+    stats: Dict[str, Dict[str, int]] = {}
+
+    def entry(user: str) -> Dict[str, int]:
+        return stats.setdefault(user, {"commits": 0, "prs": 0, "reviews": 0})
+
+    total_commits = 0
+    total_prs = 0
+    for ev in events:
+        author = str(ev.get("author") or "").strip()
+        if ev.get("type") == "commit":
+            total_commits += 1
+            if author:
+                entry(author)["commits"] += 1
+        elif ev.get("type") == "pr":
+            total_prs += 1
+            if author:
+                entry(author)["prs"] += 1
+            for reviewer in ev.get("reviewers") or []:
+                reviewer = str(reviewer).strip()
+                if reviewer and reviewer != author:
+                    entry(reviewer)["reviews"] += 1
+
+    items = [
+        MemberContribution(
+            githubUser=user,
+            commits=s["commits"],
+            prs=s["prs"],
+            reviews=s["reviews"],
+            percent=int(round(s["commits"] * 100 / total_commits)) if total_commits else 0,
+        )
+        for user, s in stats.items()
+    ]
+    items.sort(key=lambda m: (-m.commits, -m.reviews, m.githubUser))
+    return GroupContributions(groupId=group_id, totalCommits=total_commits, totalPrs=total_prs, items=items)
